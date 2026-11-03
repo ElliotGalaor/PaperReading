@@ -28,6 +28,7 @@ Interroger :
 
 ```bash
 papersim similar arxiv:2101.00001
+papersim similar arxiv:2101.00001 --from 2015 --to 2020   # filtre par année
 papersim search "suppression of superconductivity by disorder"
 papersim serve                 # interface sur http://127.0.0.1:8000, API sur /docs
 ```
@@ -40,6 +41,10 @@ Ouvrez http://127.0.0.1:8000 et glissez un article (PDF, `.txt` ou `.md`, 20 Mo 
   correspond au fichier, le papier est **ajouté au corpus** et comparé avec tous les signaux
   (sémantique, mots, citations) ;
 - sinon, la recherche se fait sur le **titre et l'abstract extraits** du texte (sans citations).
+
+Une fois les résultats affichés, le champ **Années** filtre par année de publication, sans
+renvoyer le fichier. Le filtre s'applique avant la sélection des meilleurs candidats : on obtient
+les papiers les plus proches dans la période choisie. Les papiers sans année sont alors exclus.
 
 Seules les 3 premières pages sont lues, et le fichier n'est pas conservé. Les sources externes
 indisponibles (arXiv, OpenAlex, Semantic Scholar) n'empêchent pas la recherche : un
@@ -68,9 +73,11 @@ car leur compatibilité exacte n'est pas vérifiée. Changer de source demande d
 |---|---|---|
 | `POST` | `/papers` | `{"arxiv_ids": [...], "dois": [...]}` : import + indexation |
 | `GET` | `/papers/{id}` | Fiche d'un papier |
-| `GET` | `/papers/{id}/similar?k=10&aspect=topic` | Papiers similaires, avec rang par signal |
-| `GET` | `/search?q=...` | Recherche en texte libre |
-| `POST` | `/search/file` | Fichier en `multipart/form-data` (`file`, `k`) : papiers similaires |
+| `GET` | `/papers/{id}/similar?k=10&year_min=&year_max=` | Papiers similaires, avec rang par signal |
+| `GET` | `/search?q=...&year_min=&year_max=` | Recherche en texte libre |
+| `POST` | `/search/text` | `{"query", "k", "year_min", "year_max"}` : idem pour un texte long |
+| `GET` | `/corpus/years` | Années extrêmes du corpus |
+| `POST` | `/search/file` | Fichier en `multipart/form-data` (`file`, `k`, `year_min`, `year_max`) |
 | `GET` | `/` | Interface web |
 | `POST` | `/compare` | `{"a": id, "b": id}` : cosinus, références communes, catégories communes |
 

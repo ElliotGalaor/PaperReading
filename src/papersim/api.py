@@ -39,6 +39,22 @@ class CompareRequest(BaseModel):
     b: str
 
 
+YEAR_BOUNDS = {"ge": 1000, "le": 2100}
+
+
+class TextSearchRequest(BaseModel):
+    query: str = Field(..., min_length=3, max_length=20_000)
+    k: int = Field(10, ge=1, le=100)
+    year_min: int | None = Field(None, **YEAR_BOUNDS)
+    year_max: int | None = Field(None, **YEAR_BOUNDS)
+
+
+def _years(year_min: int | None, year_max: int | None) -> search.Years:
+    if year_min is not None and year_max is not None and year_min > year_max:
+        raise HTTPException(422, "L'année de début doit précéder l'année de fin.")
+    return search.Years(year_min, year_max)
+
+
 @app.post("/papers")
 def add_papers(req: IngestRequest, conn: psycopg.Connection = Depends(get_conn)) -> dict:
     """Ajoute des papiers par identifiant arXiv ou DOI, puis les indexe.
@@ -60,10 +76,13 @@ def similar(
     paper_id: str,
     k: int = Query(10, ge=1, le=100),
     aspect: Literal["topic"] = "topic",  # 'problem' | 'method' arriveront à l'étape 3
+    year_min: int | None = Query(None, **YEAR_BOUNDS),
+    year_max: int | None = Query(None, **YEAR_BOUNDS),
     conn: psycopg.Connection = Depends(get_conn),
 ) -> dict:
+    years = _years(year_min, year_max)
     try:
-        results = search.find_similar(conn, paper_id, k=k)
+        results = search.find_similar(conn, paper_id, k=k, years=years)
     except KeyError:
         raise HTTPException(404, f"Papier inconnu : {paper_id}")
     return {"query": paper_id, "aspect": aspect, "results": results}
@@ -81,10 +100,30 @@ def get_paper(paper_id: str, conn: psycopg.Connection = Depends(get_conn)) -> di
 def search_text(
     q: str = Query(..., min_length=3),
     k: int = Query(10, ge=1, le=100),
+    year_min: int | None = Query(None, **YEAR_BOUNDS),
+    year_max: int | None = Query(None, **YEAR_BOUNDS),
     conn: psycopg.Connection = Depends(get_conn),
 ) -> dict:
-    embedder = get_embedder() if settings.embedding_source == "local" else None
-    return {"query": q, "results": search.search_text(conn, embedder, q, k=k)}
+    years = _years(year_min, year_max)
+    return {"query": q, "results": search.search_text(conn, _embedder(), q, k=k, years=years)}
+
+
+@app.post("/search/text")
+def search_long_text(req: TextSearchRequest, conn: psycopg.Connection = Depends(get_conn)) -> dict:
+    """Comme GET /search, pour un texte long (abstract) : sert à refiltrer sans renvoyer le fichier."""
+    years = _years(req.year_min, req.year_max)
+    results = search.search_text(conn, _embedder(), req.query, k=req.k, years=years)
+    return {"results": results}
+
+
+@app.get("/corpus/years")
+def corpus_years(conn: psycopg.Connection = Depends(get_conn)) -> dict:
+    """Années extrêmes du corpus et nombre de papiers."""
+    return search.corpus_years(conn)
+
+
+def _embedder():
+    return get_embedder() if settings.embedding_source == "local" else None
 
 
 @app.post("/compare")
@@ -105,9 +144,12 @@ def index() -> str:
 def search_file(
     file: UploadFile = File(..., description="PDF, .txt ou .md"),
     k: int = Form(10, ge=1, le=50),
+    year_min: int | None = Form(None, **YEAR_BOUNDS),
+    year_max: int | None = Form(None, **YEAR_BOUNDS),
     conn: psycopg.Connection = Depends(get_conn),
 ) -> dict:
     """Papiers similaires à un fichier déposé (le fichier n'est pas conservé)."""
+    years = _years(year_min, year_max)
     data = file.file.read(MAX_UPLOAD_BYTES + 1)
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(413, "Fichier trop volumineux (20 Mo au plus).")
@@ -115,4 +157,4 @@ def search_file(
         doc = extract.extract_document(file.filename or "", data)
     except ValueError as e:
         raise HTTPException(422, str(e))
-    return filesearch.search_document(conn, doc, k=k)
+    return filesearch.search_document(conn, doc, k=k, years=years)

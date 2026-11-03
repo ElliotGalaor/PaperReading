@@ -77,7 +77,18 @@
   .query h2 { margin: 4px 0 4px; font-size: 1.1rem; }
   .query p { margin: 6px 0 0; color: var(--muted); font-size: .93rem; }
 
-  h3.results-title { margin: 32px 0 10px; font-size: 1rem; }
+  .results-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 32px 0 12px; }
+  h3.results-title { margin: 0; font-size: 1rem; }
+  .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: .92rem; color: var(--muted); }
+  .filters input {
+    width: 5.5em; font: inherit; color: var(--text); background: var(--surface);
+    border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px;
+  }
+  .filters input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .filters input[aria-invalid="true"] { border-color: var(--error-text); }
+  .btn-link { font: inherit; color: var(--accent); background: none; border: 0; padding: 2px 4px; cursor: pointer; text-decoration: underline; }
+  .filters .corpus { font-size: .82rem; }
+  .results.dim { opacity: .5; transition: opacity .15s; }
   ol.results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
   .result { display: grid; grid-template-columns: 2.2em 1fr; gap: 4px 10px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
   .rank { color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 1px; }
@@ -116,7 +127,17 @@
   <div id="warnings" class="notice warn" hidden><ul></ul></div>
   <section id="query" class="query" hidden aria-live="polite"></section>
   <section id="results-section" hidden>
-    <h3 class="results-title" id="results-title"></h3>
+    <div class="results-head">
+      <h3 class="results-title" id="results-title" aria-live="polite"></h3>
+      <div class="filters" role="group" aria-label="Filtrer par année de publication">
+        <label for="year-min">Années</label>
+        <input id="year-min" type="number" inputmode="numeric" placeholder="début" aria-label="Année de début">
+        <span aria-hidden="true">–</span>
+        <input id="year-max" type="number" inputmode="numeric" placeholder="fin" aria-label="Année de fin">
+        <button id="year-reset" class="btn-link" type="button" hidden>Toutes</button>
+        <span id="corpus-range" class="corpus"></span>
+      </div>
+    </div>
     <ol id="results" class="results"></ol>
   </section>
 </main>
@@ -131,6 +152,9 @@
     citations: ["Citations", "Références bibliographiques en commun"],
   };
   let busy = false;
+  // Dernière recherche, pour la relancer avec un autre filtre sans renvoyer le fichier.
+  let lastQuery = null;
+  const yearMin = $("year-min"), yearMax = $("year-max");
 
   function el(tag, props = {}, ...children) {
     const node = document.createElement(tag);
@@ -196,9 +220,107 @@
     box.hidden = false;
   }
 
-  function showResults(results) {
+  // --- Filtre par année ---------------------------------------------------------
+
+  function readYears() {
+    const parse = (input) => (input.value.trim() === "" ? null : Number(input.value));
+    const min = parse(yearMin), max = parse(yearMax);
+    const bad = (y) => y !== null && (!Number.isInteger(y) || y < 1000 || y > 2100);
+    yearMin.setAttribute("aria-invalid", bad(min) ? "true" : "false");
+    yearMax.setAttribute("aria-invalid", bad(max) ? "true" : "false");
+    if (bad(min) || bad(max)) return { error: "Indiquez des années sur 4 chiffres." };
+    if (min !== null && max !== null && min > max) {
+      yearMax.setAttribute("aria-invalid", "true");
+      return { error: "L'année de début doit précéder l'année de fin." };
+    }
+    return { min, max };
+  }
+
+  function periodLabel({ min, max }) {
+    if (min !== null && max !== null) return min === max ? `en ${min}` : `de ${min} à ${max}`;
+    if (min !== null) return `depuis ${min}`;
+    if (max !== null) return `jusqu'à ${max}`;
+    return "";
+  }
+
+  async function loadCorpusYears() {
+    try {
+      const resp = await fetch("/corpus/years");
+      if (!resp.ok) return;
+      const c = await resp.json();
+      if (c.min == null) return;
+      for (const input of [yearMin, yearMax]) { input.min = c.min; input.max = c.max; }
+      yearMin.placeholder = c.min;
+      yearMax.placeholder = c.max;
+      $("corpus-range").textContent = `corpus : ${c.min}–${c.max}`;
+    } catch { /* optionnel : le filtre marche sans */ }
+  }
+
+  async function postJSON(url, options) {
+    const resp = await fetch(url, options);
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      let detail = typeof data.detail === "string" ? data.detail : `Erreur ${resp.status}`;
+      if (resp.status >= 500 && typeof data.detail !== "string") {
+        detail = `Erreur du serveur (${resp.status}). La base PostgreSQL est-elle lancée (docker compose up -d) ? Détails dans le terminal de « papersim serve ».`;
+      }
+      throw new Error(detail);
+    }
+    return data;
+  }
+
+  function networkMessage(err) {
+    return err.message === "Failed to fetch" ? "Le serveur ne répond pas. Est-il lancé (papersim serve) ?" : err.message;
+  }
+
+  async function refilter() {
+    if (!lastQuery || busy) return;
+    const years = readYears();
+    $("year-reset").hidden = years.error ? false : years.min === null && years.max === null;
+    if (years.error) return showError(years.error);
+    $("error").hidden = true;
+    const k = Number($("k").value);
+    let request;
+    if (lastQuery.mode === "paper") {
+      const params = new URLSearchParams({ k });
+      if (years.min !== null) params.set("year_min", years.min);
+      if (years.max !== null) params.set("year_max", years.max);
+      request = postJSON(`/papers/${encodeURI(lastQuery.paperId)}/similar?${params}`);
+    } else {
+      request = postJSON("/search/text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: lastQuery.query, k, year_min: years.min, year_max: years.max }),
+      });
+    }
+    busy = true;
+    $("results").classList.add("dim");
+    try {
+      const data = await request;
+      showResults(data.results || [], years);
+    } catch (err) {
+      showError(networkMessage(err));
+    } finally {
+      busy = false;
+      $("results").classList.remove("dim");
+    }
+  }
+
+  let filterTimer;
+  function scheduleRefilter() {
+    clearTimeout(filterTimer);
+    filterTimer = setTimeout(refilter, 450);
+  }
+
+  // --- Affichage des résultats --------------------------------------------------
+
+  function showResults(results, years = readYears()) {
     const list = $("results");
-    $("results-title").textContent = results.length ? `${results.length} papiers similaires` : "";
+    const period = years.error ? "" : periodLabel(years);
+    $("year-reset").hidden = !period;
+    $("results-title").textContent = results.length
+      ? `${results.length} papiers similaires${period ? " · " + period : ""}`
+      : "Aucun résultat";
     list.replaceChildren(...results.map((r, i) => {
       const p = r.paper, url = paperLink(p);
       const title = url
@@ -215,7 +337,10 @@
     }));
     $("results-section").hidden = false;
     if (!results.length) {
-      list.replaceChildren(el("p", { className: "empty", textContent: "Aucun papier similaire dans le corpus. Importez d'abord des papiers (papersim ingest-arxiv …)." }));
+      const message = period
+        ? `Aucun papier similaire publié ${period}. Élargissez la période.`
+        : "Aucun papier similaire dans le corpus. Importez d'abord des papiers (papersim ingest-arxiv …).";
+      list.replaceChildren(el("p", { className: "empty", textContent: message }));
     }
   }
 
@@ -230,25 +355,25 @@
     reset();
     if (OPENED_AS_FILE) return showError(FILE_MODE_MESSAGE);
     if (file.size > 20 * 1024 * 1024) return showError("Fichier trop volumineux (20 Mo au plus).");
+    const years = readYears();
+    if (years.error) return showError(years.error);
     setBusy(true, `Analyse de « ${file.name} »…`);
     const body = new FormData();
     body.append("file", file);
     body.append("k", $("k").value);
+    if (years.min !== null) body.append("year_min", years.min);
+    if (years.max !== null) body.append("year_max", years.max);
+    lastQuery = null;
     try {
-      const resp = await fetch("/search/file", { method: "POST", body });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) {
-        let detail = typeof data.detail === "string" ? data.detail : `Erreur ${resp.status}`;
-        if (resp.status >= 500 && typeof data.detail !== "string") {
-          detail = `Erreur du serveur (${resp.status}). La base PostgreSQL est-elle lancée (docker compose up -d) ? Détails dans le terminal de « papersim serve ».`;
-        }
-        throw new Error(detail);
-      }
+      const data = await postJSON("/search/file", { method: "POST", body });
+      lastQuery = data.mode === "paper"
+        ? { mode: "paper", paperId: data.paper.id }
+        : { mode: "text", query: data.query };
       showWarnings(data.warnings || []);
       showQuery(data, file.name);
-      showResults(data.results || []);
+      showResults(data.results || [], years);
     } catch (err) {
-      showError(err.message === "Failed to fetch" ? "Le serveur ne répond pas. Est-il lancé (papersim serve) ?" : err.message);
+      showError(networkMessage(err));
     } finally {
       setBusy(false);
       input.value = "";
@@ -256,6 +381,17 @@
   }
 
   if (OPENED_AS_FILE) showError(FILE_MODE_MESSAGE);
+  else loadCorpusYears();
+
+  for (const input of [yearMin, yearMax]) {
+    input.addEventListener("input", scheduleRefilter);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { clearTimeout(filterTimer); refilter(); } });
+  }
+  $("year-reset").addEventListener("click", () => {
+    yearMin.value = yearMax.value = "";
+    refilter();
+  });
+  $("k").addEventListener("change", refilter);
 
   drop.addEventListener("click", () => !busy && input.click());
   drop.addEventListener("keydown", (e) => {

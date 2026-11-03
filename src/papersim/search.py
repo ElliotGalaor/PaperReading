@@ -10,6 +10,7 @@ différentes. Les poids pourront être réglés une fois le jeu d'évaluation pr
 """
 
 from collections import defaultdict
+from dataclasses import dataclass
 
 import numpy as np
 import psycopg
@@ -19,6 +20,43 @@ from .config import settings
 from .pipeline import TOPIC
 
 Ranking = list[tuple[str, float]]  # [(paper_id, score brut), ...] trié du meilleur au moins bon
+
+
+@dataclass(frozen=True)
+class Years:
+    """Filtre par année de publication, bornes incluses.
+
+    Appliqué dans chaque signal AVANT la sélection des meilleurs candidats : on obtient
+    les plus proches dans la période, pas un sous-ensemble du top général.
+    Quand le filtre est actif, les papiers sans année sont exclus.
+    """
+
+    min: int | None = None
+    max: int | None = None
+
+    @property
+    def active(self) -> bool:
+        return self.min is not None or self.max is not None
+
+    def params(self) -> dict:
+        return {"ymin": self.min, "ymax": self.max}
+
+
+ANY_YEAR = Years()
+YEAR_SQL = (
+    "(%(ymin)s::int IS NULL OR p.year >= %(ymin)s) "
+    "AND (%(ymax)s::int IS NULL OR p.year <= %(ymax)s)"
+)
+
+
+def _allow_filtered_index_scan(conn: psycopg.Connection) -> None:
+    """Avec un filtre, l'index HNSW peut renvoyer trop peu de lignes : pgvector >= 0.8
+    sait poursuivre le parcours jusqu'à en trouver assez. Sans effet sur les versions anciennes."""
+    try:
+        with conn.transaction():
+            conn.execute("SET hnsw.iterative_scan = strict_order")
+    except psycopg.Error:
+        pass
 
 
 def rrf(
@@ -38,29 +76,33 @@ def rrf(
 
 def vector_ranking(
     conn: psycopg.Connection, embedding: np.ndarray, *, k: int, exclude: str | None = None,
-    aspect: str = TOPIC, model: str | None = None,
+    aspect: str = TOPIC, model: str | None = None, years: Years = ANY_YEAR,
 ) -> Ranking:
+    if years.active:
+        _allow_filtered_index_scan(conn)
     rows = conn.execute(
-        """
-        SELECT paper_id, 1 - (embedding <=> %(emb)s) AS score
-        FROM paper_embeddings
-        WHERE aspect = %(aspect)s AND model = %(model)s
-          AND (%(exclude)s::text IS NULL OR paper_id <> %(exclude)s)
-        ORDER BY embedding <=> %(emb)s
+        f"""
+        SELECT e.paper_id, 1 - (e.embedding <=> %(emb)s) AS score
+        FROM paper_embeddings e JOIN papers p ON p.id = e.paper_id
+        WHERE e.aspect = %(aspect)s AND e.model = %(model)s
+          AND (%(exclude)s::text IS NULL OR e.paper_id <> %(exclude)s)
+          AND {YEAR_SQL}
+        ORDER BY e.embedding <=> %(emb)s
         LIMIT %(k)s
         """,
         {"emb": embedding, "aspect": aspect, "model": model or settings.active_embedding_model,
-         "exclude": exclude, "k": k},
+         "exclude": exclude, "k": k, **years.params()},
     ).fetchall()
     return [(r["paper_id"], float(r["score"])) for r in rows]
 
 
 def lexical_ranking(
-    conn: psycopg.Connection, text: str, *, k: int, exclude: str | None = None
+    conn: psycopg.Connection, text: str, *, k: int, exclude: str | None = None,
+    years: Years = ANY_YEAR,
 ) -> Ranking:
     # Requête en OU sur tous les lexèmes du texte : un abstract entier en ET ne renverrait rien.
     rows = conn.execute(
-        """
+        f"""
         WITH q AS (
             SELECT to_tsquery('simple', string_agg(quote_literal(lexeme), ' | ')) AS query
             FROM unnest(to_tsvector('english', %(text)s))
@@ -69,18 +111,21 @@ def lexical_ranking(
         FROM papers p, q
         WHERE q.query IS NOT NULL AND p.tsv @@ q.query
           AND (%(exclude)s::text IS NULL OR p.id <> %(exclude)s)
+          AND {YEAR_SQL}
         ORDER BY score DESC
         LIMIT %(k)s
         """,
-        {"text": text, "exclude": exclude, "k": k},
+        {"text": text, "exclude": exclude, "k": k, **years.params()},
     ).fetchall()
     return [(r["id"], float(r["score"])) for r in rows]
 
 
-def coupling_ranking(conn: psycopg.Connection, paper_id: str, *, k: int) -> Ranking:
+def coupling_ranking(
+    conn: psycopg.Connection, paper_id: str, *, k: int, years: Years = ANY_YEAR
+) -> Ranking:
     """Couplage bibliographique : références communes / sqrt(nA * nB)."""
     rows = conn.execute(
-        """
+        f"""
         WITH mine AS (
             SELECT ref_openalex_id FROM paper_references WHERE paper_id = %(id)s
         ),
@@ -92,12 +137,13 @@ def coupling_ranking(conn: psycopg.Connection, paper_id: str, *, k: int) -> Rank
         FROM paper_references r
         JOIN mine USING (ref_openalex_id)
         JOIN sizes s ON s.paper_id = r.paper_id
-        WHERE r.paper_id <> %(id)s
+        JOIN papers p ON p.id = r.paper_id
+        WHERE r.paper_id <> %(id)s AND {YEAR_SQL}
         GROUP BY r.paper_id, s.n
         ORDER BY score DESC
         LIMIT %(k)s
         """,
-        {"id": paper_id, "k": k},
+        {"id": paper_id, "k": k, **years.params()},
     ).fetchall()
     return [(r["id"], float(r["score"])) for r in rows]
 
@@ -129,7 +175,7 @@ def _fuse(
 
 def find_similar(
     conn: psycopg.Connection, paper_id: str, *, k: int = 10, pool: int = 50,
-    weights: dict[str, float] | None = None,
+    weights: dict[str, float] | None = None, years: Years = ANY_YEAR,
 ) -> list[dict]:
     """Papiers similaires à un papier du corpus."""
     paper = db.get_paper(conn, paper_id)
@@ -139,26 +185,36 @@ def find_similar(
     signals: dict[str, Ranking] = {}
     emb = db.get_embedding(conn, paper_id, TOPIC, settings.active_embedding_model)
     if emb is not None:
-        signals["semantic"] = vector_ranking(conn, emb, k=pool, exclude=paper_id)
+        signals["semantic"] = vector_ranking(conn, emb, k=pool, exclude=paper_id, years=years)
     text = f"{paper['title']} {paper['abstract'] or ''}"
-    signals["lexical"] = lexical_ranking(conn, text, k=pool, exclude=paper_id)
-    signals["citations"] = coupling_ranking(conn, paper_id, k=pool)
+    signals["lexical"] = lexical_ranking(conn, text, k=pool, exclude=paper_id, years=years)
+    signals["citations"] = coupling_ranking(conn, paper_id, k=pool, years=years)
     return _fuse(conn, signals, k, weights)
 
 
 def search_text(
     conn: psycopg.Connection, embedder, query: str, *, k: int = 10, pool: int = 50,
-    weights: dict[str, float] | None = None,
+    weights: dict[str, float] | None = None, years: Years = ANY_YEAR,
 ) -> list[dict]:
     """Recherche par texte libre (une phrase, un problème, un abstract).
 
     Sans embedder (mode "s2" : pas de modèle local pour encoder la requête),
     seul le signal lexical est utilisé.
     """
-    signals = {"lexical": lexical_ranking(conn, query, k=pool)}
+    signals = {"lexical": lexical_ranking(conn, query, k=pool, years=years)}
     if embedder is not None:
-        signals["semantic"] = vector_ranking(conn, embedder.embed_query(query), k=pool)
+        signals["semantic"] = vector_ranking(
+            conn, embedder.embed_query(query), k=pool, years=years
+        )
     return _fuse(conn, signals, k, weights)
+
+
+def corpus_years(conn: psycopg.Connection) -> dict:
+    """Années extrêmes du corpus (bornes proposées par l'interface)."""
+    row = conn.execute(
+        "SELECT min(year) AS min, max(year) AS max, count(*) AS papers FROM papers"
+    ).fetchone()
+    return {"min": row["min"], "max": row["max"], "papers": row["papers"]}
 
 
 def compare(conn: psycopg.Connection, a: str, b: str) -> dict:

@@ -6,6 +6,7 @@ from pdfgen import make_pdf
 from papersim import api, filesearch
 from papersim.extract import Extracted
 from papersim.models import Paper
+from papersim.search import Years
 
 PAGE = "arXiv:2101.00001v1\nPseudogap suppression by disorder in cuprates\nAbstract\n" + "text " * 40
 RESULT = [{"paper": {"id": "arxiv:2", "title": "Other"}, "score": 0.03, "signals": {}}]
@@ -25,9 +26,9 @@ def calls(monkeypatch):
     monkeypatch.setattr(filesearch.pipeline, "compute_embeddings", lambda conn: 1)
     monkeypatch.setattr(filesearch.db, "get_paper", lambda conn, pid: {"id": pid, "title": "T"})
     monkeypatch.setattr(filesearch.search, "find_similar",
-                        lambda conn, pid, k: log.setdefault("similar", (pid, k)) and RESULT)
+                        lambda conn, pid, k, years: log.setdefault("similar", (pid, k, years)) and RESULT)
     monkeypatch.setattr(filesearch.search, "search_text",
-                        lambda conn, emb, q, k: log.setdefault("text", (emb, q, k)) and RESULT)
+                        lambda conn, emb, q, k, years: log.setdefault("text", (emb, q, k, years)) and RESULT)
     monkeypatch.setattr(filesearch, "_query_embedder", lambda warnings: None)
     return log
 
@@ -42,7 +43,7 @@ def test_recognized_paper_uses_full_search(monkeypatch, calls):
     monkeypatch.setattr(filesearch.arxiv, "fetch_arxiv_ids", lambda ids: [paper])
     out = filesearch.search_document(FakeConn(), _doc(arxiv_ids=["2101.00001"]), k=5)
     assert out["mode"] == "paper"
-    assert calls["similar"] == ("arxiv:2101.00001", 5)
+    assert calls["similar"][:2] == ("arxiv:2101.00001", 5)
     assert out["warnings"] == []
 
 
@@ -85,11 +86,22 @@ def client(monkeypatch):
     api.app.dependency_overrides[api.get_conn] = lambda: FakeConn()
     captured = {}
 
-    def fake_search(conn, doc, k):
-        captured.update(doc=doc, k=k)
+    def fake_search(conn, doc, k, years):
+        captured.update(doc=doc, k=k, years=years)
         return {"mode": "text", "results": [], "warnings": []}
 
+    def fake_text(conn, embedder, query, k, years):
+        captured.update(query=query, k=k, years=years)
+        return []
+
+    def fake_similar(conn, pid, k, years):
+        captured.update(pid=pid, k=k, years=years)
+        return []
+
     monkeypatch.setattr(api.filesearch, "search_document", fake_search)
+    monkeypatch.setattr(api.search, "search_text", fake_text)
+    monkeypatch.setattr(api.search, "find_similar", fake_similar)
+    monkeypatch.setattr(api, "_embedder", lambda: None)
     yield TestClient(api.app), captured
     api.app.dependency_overrides.clear()
 
@@ -119,6 +131,35 @@ def test_upload_rejects_bad_files(client, monkeypatch):
     monkeypatch.setattr(api, "MAX_UPLOAD_BYTES", 10)
     resp = tc.post("/search/file", files={"file": ("big.txt", b"x" * 11, "text/plain")})
     assert resp.status_code == 413
+
+
+def test_upload_with_year_filter(client):
+    tc, captured = client
+    resp = tc.post("/search/file", files={"file": ("a.txt", b"x " * 100, "text/plain")},
+                   data={"year_min": "2015", "year_max": "2020"})
+    assert resp.status_code == 200
+    assert captured["years"] == Years(2015, 2020)
+
+
+def test_refilter_endpoints_pass_years(client):
+    tc, captured = client
+    resp = tc.post("/search/text", json={"query": "pseudogap disorder", "k": 5, "year_min": 2018})
+    assert resp.status_code == 200
+    assert captured["years"] == Years(2018, None) and captured["k"] == 5
+
+    resp = tc.get("/papers/arxiv:hep-th/9901001/similar", params={"year_max": "2001"})
+    assert resp.status_code == 200
+    assert captured["pid"] == "arxiv:hep-th/9901001"
+    assert captured["years"] == Years(None, 2001)
+
+
+def test_inverted_or_absurd_years_are_rejected(client):
+    tc, _ = client
+    resp = tc.post("/search/text", json={"query": "abc", "year_min": 2020, "year_max": 2010})
+    assert resp.status_code == 422
+    assert "précéder" in resp.json()["detail"]
+    resp = tc.get("/papers/x/similar", params={"year_min": "20"})
+    assert resp.status_code == 422
 
 
 def test_k_is_bounded(client):

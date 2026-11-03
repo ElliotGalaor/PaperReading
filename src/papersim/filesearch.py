@@ -75,7 +75,9 @@ def _query_embedder(warnings: list[str]):
         return None
 
 
-def search_document(conn: psycopg.Connection, ex: Extracted, k: int = 10) -> dict:
+def search_document(
+    conn: psycopg.Connection, ex: Extracted, k: int = 10, years: search.Years = search.ANY_YEAR
+) -> dict:
     warnings: list[str] = []
 
     paper = resolve_paper(ex, warnings)
@@ -85,18 +87,21 @@ def search_document(conn: psycopg.Connection, ex: Extracted, k: int = 10) -> dic
             return {
                 "mode": "paper",
                 "paper": db.get_paper(conn, pid),
-                "results": search.find_similar(conn, pid, k=k),
+                "results": search.find_similar(conn, pid, k=k, years=years),
                 "warnings": warnings,
             }
 
     embedder = _query_embedder(warnings)
+    query = ex.query_text()
     return {
         "mode": "text",
+        # Renvoyé pour pouvoir relancer la recherche (filtre d'années) sans renvoyer le fichier.
+        "query": query,
         "extracted": {
             "title": ex.title,
             "abstract": ex.abstract,
             "identifiers": ex.arxiv_ids + ex.dois,
         },
-        "results": search.search_text(conn, embedder, ex.query_text(), k=k),
+        "results": search.search_text(conn, embedder, query, k=k, years=years),
         "warnings": warnings,
     }

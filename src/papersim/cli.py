@@ -100,18 +100,29 @@ def _print_results(results: list[dict]) -> None:
 
 
 @app.command()
-def similar(paper_id: str, k: int = typer.Option(10, "-k")) -> None:
+def similar(
+    paper_id: str,
+    k: int = typer.Option(10, "-k"),
+    year_min: int | None = typer.Option(None, "--from", help="Année de début (incluse)"),
+    year_max: int | None = typer.Option(None, "--to", help="Année de fin (incluse)"),
+) -> None:
     """Affiche les papiers les plus proches d'un papier du corpus."""
+    years = search.Years(year_min, year_max)
     with db.connect() as conn:
         try:
-            results = search.find_similar(conn, paper_id, k=k)
+            results = search.find_similar(conn, paper_id, k=k, years=years)
         except KeyError:
             raise typer.BadParameter(f"Papier inconnu : {paper_id}")
     _print_results(results)
 
 
 @app.command("search")
-def search_cmd(query: str, k: int = typer.Option(10, "-k")) -> None:
+def search_cmd(
+    query: str,
+    k: int = typer.Option(10, "-k"),
+    year_min: int | None = typer.Option(None, "--from", help="Année de début (incluse)"),
+    year_max: int | None = typer.Option(None, "--to", help="Année de fin (incluse)"),
+) -> None:
     """Recherche par texte libre."""
     embedder = None
     if settings.embedding_source == "local":
@@ -122,7 +133,8 @@ def search_cmd(query: str, k: int = typer.Option(10, "-k")) -> None:
     else:
         typer.echo("Mode s2 : recherche lexicale seulement (pas de modèle local pour la requête).")
     with db.connect() as conn:
-        _print_results(search.search_text(conn, embedder, query, k=k))
+        years = search.Years(year_min, year_max)
+        _print_results(search.search_text(conn, embedder, query, k=k, years=years))
 
 
 @app.command()
