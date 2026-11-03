@@ -186,10 +186,61 @@ def find_similar(
     emb = db.get_embedding(conn, paper_id, TOPIC, settings.active_embedding_model)
     if emb is not None:
         signals["semantic"] = vector_ranking(conn, emb, k=pool, exclude=paper_id, years=years)
-    text = f"{paper['title']} {paper['abstract'] or ''}"
-    signals["lexical"] = lexical_ranking(conn, text, k=pool, exclude=paper_id, years=years)
+    signals["lexical"] = lexical_ranking(conn, _paper_text(paper), k=pool, exclude=paper_id, years=years)
     signals["citations"] = coupling_ranking(conn, paper_id, k=pool, years=years)
     return _fuse(conn, signals, k, weights)
+
+
+def _paper_text(paper: dict) -> str:
+    return f"{paper['title']} {paper['abstract'] or ''}"
+
+
+# --- Classement d'un seul signal (avant fusion) ------------------------------------------
+
+
+def paper_signal(
+    conn: psycopg.Connection, paper_id: str, signal: str, *, k: int = 15,
+    years: Years = ANY_YEAR,
+) -> Ranking:
+    """Classement brut d'un signal pour un papier du corpus (mêmes requêtes que find_similar)."""
+    paper = db.get_paper(conn, paper_id)
+    if paper is None:
+        raise KeyError(paper_id)
+    if signal == "semantic":
+        emb = db.get_embedding(conn, paper_id, TOPIC, settings.active_embedding_model)
+        if emb is None:
+            raise ValueError("Ce papier n'a pas encore d'embedding (lancez papersim embed).")
+        return vector_ranking(conn, emb, k=k, exclude=paper_id, years=years)
+    if signal == "lexical":
+        return lexical_ranking(conn, _paper_text(paper), k=k, exclude=paper_id, years=years)
+    if signal == "citations":
+        return coupling_ranking(conn, paper_id, k=k, years=years)
+    raise ValueError(f"Signal inconnu : {signal}")
+
+
+def text_signal(
+    conn: psycopg.Connection, embedder, query: str, signal: str, *, k: int = 15,
+    years: Years = ANY_YEAR,
+) -> Ranking:
+    """Classement brut d'un signal pour un texte libre (mêmes requêtes que search_text)."""
+    if signal == "lexical":
+        return lexical_ranking(conn, query, k=k, years=years)
+    if signal == "semantic":
+        if embedder is None:
+            raise ValueError("Classement sémantique indisponible : aucun modèle local pour encoder le texte.")
+        return vector_ranking(conn, embedder.embed_query(query), k=k, years=years)
+    if signal == "citations":
+        raise ValueError("Le classement par citations n'existe que pour un papier reconnu.")
+    raise ValueError(f"Signal inconnu : {signal}")
+
+
+def ranking_details(conn: psycopg.Connection, ranking: Ranking) -> list[dict]:
+    papers = db.get_papers(conn, [pid for pid, _ in ranking])
+    return [
+        {"rank": i, "score": round(score, 4), "paper": papers[pid]}
+        for i, (pid, score) in enumerate(ranking, start=1)
+        if pid in papers
+    ]
 
 
 def search_text(

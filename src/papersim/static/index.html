@@ -77,26 +77,74 @@
   .query h2 { margin: 4px 0 4px; font-size: 1.1rem; }
   .query p { margin: 6px 0 0; color: var(--muted); font-size: .93rem; }
 
-  .results-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 32px 0 12px; }
-  h3.results-title { margin: 0; font-size: 1rem; }
-  .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: .92rem; color: var(--muted); }
-  .filters input {
-    width: 5.5em; font: inherit; color: var(--text); background: var(--surface);
-    border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px;
+  /* --- Barre de contrôle des résultats ------------------------------------- */
+  h3.results-title { margin: 32px 0 12px; font-size: 1rem; }
+  .controls {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px 28px; align-items: end;
+    padding: 14px 16px; margin-bottom: 14px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   }
-  .filters input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .filters input[aria-invalid="true"] { border-color: var(--error-text); }
-  .btn-link { font: inherit; color: var(--accent); background: none; border: 0; padding: 2px 4px; cursor: pointer; text-decoration: underline; }
-  .filters .corpus { font-size: .82rem; }
-  .results.dim { opacity: .5; transition: opacity .15s; }
+  @media (max-width: 640px) { .controls { grid-template-columns: minmax(0, 1fr); } }
+  .control-label { display: flex; align-items: baseline; gap: 8px; font-size: .85rem; color: var(--muted); margin-bottom: 6px; }
+  .control-label output { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .btn-link { font: inherit; color: var(--accent); background: none; border: 0; padding: 0 2px; cursor: pointer; text-decoration: underline; margin-left: auto; }
+
+  /* Curseur à deux poignées : deux input[type=range] superposés sur une piste commune. */
+  .range { position: relative; height: 28px; --thumb: 18px; }
+  .range-track, .range-fill { position: absolute; top: 50%; height: 4px; border-radius: 2px; transform: translateY(-50%); }
+  .range-track { left: calc(var(--thumb) / 2); right: calc(var(--thumb) / 2); background: var(--border); }
+  .range-fill { background: var(--accent); }
+  .range input {
+    position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
+    background: none; pointer-events: none; -webkit-appearance: none; appearance: none;
+  }
+  .range input::-webkit-slider-runnable-track { background: none; border: 0; }
+  .range input::-moz-range-track { background: none; border: 0; }
+  .range input::-webkit-slider-thumb {
+    -webkit-appearance: none; pointer-events: auto; cursor: grab;
+    width: var(--thumb); height: var(--thumb); border-radius: 50%;
+    background: var(--surface); border: 2px solid var(--accent);
+  }
+  .range input::-moz-range-thumb {
+    pointer-events: auto; cursor: grab;
+    width: var(--thumb); height: var(--thumb); border-radius: 50%;
+    background: var(--surface); border: 2px solid var(--accent); box-sizing: border-box;
+  }
+  .range input:focus-visible { outline: none; }
+  .range input:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--accent-soft); }
+  .range input:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px var(--accent-soft); }
+  .range input:disabled::-webkit-slider-thumb { border-color: var(--border); cursor: default; }
+  .range input:disabled::-moz-range-thumb { border-color: var(--border); cursor: default; }
+  .range-ends { display: flex; justify-content: space-between; font-size: .78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  /* Sélecteur d'affichage : boutons radio présentés en contrôle segmenté. */
+  .segmented { position: relative; display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+  .segmented input { position: absolute; opacity: 0; pointer-events: none; }
+  .segmented label { padding: 5px 12px; font-size: .86rem; color: var(--muted); cursor: pointer; white-space: nowrap; }
+  .segmented label:not(:first-of-type) { border-left: 1px solid var(--border); }
+  .segmented input:checked + label { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .segmented input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: -2px; }
+  @media (max-width: 420px) { .segmented { display: flex; } .segmented label { flex: 1; text-align: center; padding: 6px 4px; } }
+
+  /* --- Résultats ----------------------------------------------------------- */
   ol.results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-  .result { display: grid; grid-template-columns: 2.2em 1fr; gap: 4px 10px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  .results.dim { opacity: .5; transition: opacity .15s; }
+  .result { display: grid; grid-template-columns: 2.2em minmax(0, 1fr); gap: 4px 10px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  .results[data-view="compact"] .result { padding: 10px 16px; }
   .rank { color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 1px; }
-  .result a.title { color: var(--text); font-weight: 600; text-decoration: none; }
+  .result .title { color: var(--text); font-weight: 600; text-decoration: none; }
   .result a.title:hover { color: var(--accent); text-decoration: underline; }
   .meta { color: var(--muted); font-size: .88rem; margin-top: 2px; }
   .signals { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .chip { font-size: .78rem; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+  a.chip { text-decoration: none; }
+  a.chip:hover { background: var(--accent); color: var(--surface); }
+  a.chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  a.chip::after { content: " ↗"; font-size: .9em; }
+  .abstract { margin: 10px 0 0; font-size: .92rem; line-height: 1.55; }
+  .abstract.clamped { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .abstract.missing { color: var(--muted); font-style: italic; }
+  .more { margin-top: 4px; font-size: .85rem; }
   .empty { color: var(--muted); margin-top: 16px; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 </style>
@@ -126,18 +174,38 @@
   <div id="error" class="notice error" role="alert" hidden></div>
   <div id="warnings" class="notice warn" hidden><ul></ul></div>
   <section id="query" class="query" hidden aria-live="polite"></section>
+
   <section id="results-section" hidden>
-    <div class="results-head">
-      <h3 class="results-title" id="results-title" aria-live="polite"></h3>
-      <div class="filters" role="group" aria-label="Filtrer par année de publication">
-        <label for="year-min">Années</label>
-        <input id="year-min" type="number" inputmode="numeric" placeholder="début" aria-label="Année de début">
-        <span aria-hidden="true">–</span>
-        <input id="year-max" type="number" inputmode="numeric" placeholder="fin" aria-label="Année de fin">
-        <button id="year-reset" class="btn-link" type="button" hidden>Toutes</button>
-        <span id="corpus-range" class="corpus"></span>
+    <h3 class="results-title" id="results-title" aria-live="polite"></h3>
+
+    <div class="controls">
+      <div id="year-filter" role="group" aria-labelledby="year-label">
+        <div class="control-label">
+          <span id="year-label">Années</span>
+          <output id="year-output" for="year-min year-max">toutes</output>
+          <button id="year-reset" class="btn-link" type="button" hidden>Toutes les années</button>
+        </div>
+        <div class="range">
+          <div class="range-track"><div class="range-fill" id="range-fill"></div></div>
+          <input id="year-min" type="range" aria-label="Année de début">
+          <input id="year-max" type="range" aria-label="Année de fin">
+        </div>
+        <div class="range-ends"><span id="range-lo"></span><span id="range-hi"></span></div>
+      </div>
+
+      <div role="radiogroup" aria-labelledby="view-label">
+        <div class="control-label"><span id="view-label">Affichage</span></div>
+        <div class="segmented">
+          <input type="radio" name="view" id="view-compact" value="compact">
+          <label for="view-compact" title="Titre et auteurs">Small</label>
+          <input type="radio" name="view" id="view-infos" value="infos" checked>
+          <label for="view-infos" title="Titre, auteurs, année, revue et signaux">Medium</label>
+          <input type="radio" name="view" id="view-abstract" value="abstract">
+          <label for="view-abstract" title="Titre, informations et résumé">Large</label>
+        </div>
       </div>
     </div>
+
     <ol id="results" class="results"></ol>
   </section>
 </main>
@@ -146,15 +214,22 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const drop = $("drop"), input = $("file");
+  const yearMin = $("year-min"), yearMax = $("year-max");
   const SIGNALS = {
     semantic: ["Sémantique", "Proximité de sens entre les abstracts (SPECTER2)"],
     lexical: ["Mots", "Mots en commun dans le titre et l'abstract"],
     citations: ["Citations", "Références bibliographiques en commun"],
   };
+  const VIEW_KEY = "paperreading.view";
+  // Étiquettes qui ouvrent le classement complet du signal dans un nouvel onglet.
+  const RANKABLE = new Set(["semantic", "lexical"]);
+
   let busy = false;
-  // Dernière recherche, pour la relancer avec un autre filtre sans renvoyer le fichier.
-  let lastQuery = null;
-  const yearMin = $("year-min"), yearMax = $("year-max");
+  let lastQuery = null;     // dernière recherche, pour la relancer sans renvoyer le fichier
+  let lastResults = [];     // derniers résultats, pour changer d'affichage sans requête
+  let lastPeriod = "";
+  let lastYears = { min: null, max: null };  // période des résultats affichés
+  let corpus = null;        // { min, max } années du corpus
 
   function el(tag, props = {}, ...children) {
     const node = document.createElement(tag);
@@ -169,10 +244,13 @@
     return null;
   }
 
-  function paperMeta(p) {
+  function authorsText(p) {
     const authors = p.authors || [];
-    const names = authors.slice(0, 3).join(", ") + (authors.length > 3 ? " et al." : "");
-    return [names, p.year, p.venue].filter(Boolean).join(" · ");
+    return authors.slice(0, 3).join(", ") + (authors.length > 3 ? " et al." : "");
+  }
+
+  function paperMeta(p) {
+    return [authorsText(p), p.year, p.venue].filter(Boolean).join(" · ");
   }
 
   function setBusy(on, text) {
@@ -220,20 +298,37 @@
     box.hidden = false;
   }
 
-  // --- Filtre par année ---------------------------------------------------------
+  // --- Curseur d'années -----------------------------------------------------------
 
-  function readYears() {
-    const parse = (input) => (input.value.trim() === "" ? null : Number(input.value));
-    const min = parse(yearMin), max = parse(yearMax);
-    const bad = (y) => y !== null && (!Number.isInteger(y) || y < 1000 || y > 2100);
-    yearMin.setAttribute("aria-invalid", bad(min) ? "true" : "false");
-    yearMax.setAttribute("aria-invalid", bad(max) ? "true" : "false");
-    if (bad(min) || bad(max)) return { error: "Indiquez des années sur 4 chiffres." };
-    if (min !== null && max !== null && min > max) {
-      yearMax.setAttribute("aria-invalid", "true");
-      return { error: "L'année de début doit précéder l'année de fin." };
+  function setCorpusBounds(c) {
+    const hadFullRange = !corpus || (Number(yearMin.value) === corpus.min && Number(yearMax.value) === corpus.max);
+    corpus = c;
+    $("year-filter").hidden = !c;
+    if (!c) return;
+    for (const r of [yearMin, yearMax]) { r.min = c.min; r.max = c.max; r.step = 1; r.disabled = c.min === c.max; }
+    if (hadFullRange) {
+      yearMin.value = c.min;
+      yearMax.value = c.max;
     }
-    return { min, max };
+    $("range-lo").textContent = c.min;
+    $("range-hi").textContent = c.max;
+    updateSlider();
+  }
+
+  async function loadCorpusYears() {
+    try {
+      const resp = await fetch("/corpus/years");
+      if (!resp.ok) return;
+      const c = await resp.json();
+      setCorpusBounds(c.min == null ? null : { min: c.min, max: c.max });
+    } catch { /* le filtre est facultatif */ }
+  }
+
+  // Bornes choisies ; null quand une poignée est en butée (pas de filtre de ce côté).
+  function readYears() {
+    if (!corpus) return { min: null, max: null };
+    const lo = Number(yearMin.value), hi = Number(yearMax.value);
+    return { min: lo > corpus.min ? lo : null, max: hi < corpus.max ? hi : null };
   }
 
   function periodLabel({ min, max }) {
@@ -243,18 +338,27 @@
     return "";
   }
 
-  async function loadCorpusYears() {
-    try {
-      const resp = await fetch("/corpus/years");
-      if (!resp.ok) return;
-      const c = await resp.json();
-      if (c.min == null) return;
-      for (const input of [yearMin, yearMax]) { input.min = c.min; input.max = c.max; }
-      yearMin.placeholder = c.min;
-      yearMax.placeholder = c.max;
-      $("corpus-range").textContent = `corpus : ${c.min}–${c.max}`;
-    } catch { /* optionnel : le filtre marche sans */ }
+  function updateSlider(moved) {
+    if (!corpus) return;
+    let lo = Number(yearMin.value), hi = Number(yearMax.value);
+    if (lo > hi) {  // les poignées ne se croisent pas
+      if (moved === yearMin) { yearMin.value = hi; lo = hi; } else { yearMax.value = lo; hi = lo; }
+    }
+    const span = corpus.max - corpus.min || 1;
+    const fill = $("range-fill");
+    // La piste est réduite d'une demi-poignée de chaque côté (9 px) pour suivre le centre des poignées.
+    fill.style.left = `calc(9px + (100% - 18px) * ${(lo - corpus.min) / span})`;
+    fill.style.width = `calc((100% - 18px) * ${(hi - lo) / span})`;
+    // Poignées confondues en butée haute : la poignée « début » doit rester attrapable.
+    yearMin.style.zIndex = lo >= corpus.max ? 3 : 1;
+    yearMin.setAttribute("aria-valuetext", String(lo));
+    yearMax.setAttribute("aria-valuetext", String(hi));
+    const years = readYears();
+    $("year-output").textContent = years.min === null && years.max === null ? "toutes" : `${lo} – ${hi}`;
+    $("year-reset").hidden = years.min === null && years.max === null;
   }
+
+  // --- Requêtes --------------------------------------------------------------------
 
   async function postJSON(url, options) {
     const resp = await fetch(url, options);
@@ -273,12 +377,11 @@
     return err.message === "Failed to fetch" ? "Le serveur ne répond pas. Est-il lancé (papersim serve) ?" : err.message;
   }
 
+  let pending = false;
   async function refilter() {
-    if (!lastQuery || busy) return;
+    if (!lastQuery) return;
+    if (busy) { pending = true; return; }  // relancée dès la fin de la requête en cours
     const years = readYears();
-    $("year-reset").hidden = years.error ? false : years.min === null && years.max === null;
-    if (years.error) return showError(years.error);
-    $("error").hidden = true;
     const k = Number($("k").value);
     let request;
     if (lastQuery.mode === "paper") {
@@ -294,6 +397,7 @@
       });
     }
     busy = true;
+    $("error").hidden = true;
     $("results").classList.add("dim");
     try {
       const data = await request;
@@ -303,46 +407,100 @@
     } finally {
       busy = false;
       $("results").classList.remove("dim");
+      if (pending) { pending = false; refilter(); }
     }
   }
 
   let filterTimer;
   function scheduleRefilter() {
     clearTimeout(filterTimer);
-    filterTimer = setTimeout(refilter, 450);
+    filterTimer = setTimeout(refilter, 350);
   }
 
-  // --- Affichage des résultats --------------------------------------------------
+  // --- Affichage des résultats --------------------------------------------------------
 
-  function showResults(results, years = readYears()) {
-    const list = $("results");
-    const period = years.error ? "" : periodLabel(years);
-    $("year-reset").hidden = !period;
-    $("results-title").textContent = results.length
-      ? `${results.length} papiers similaires${period ? " · " + period : ""}`
-      : "Aucun résultat";
-    list.replaceChildren(...results.map((r, i) => {
+  function currentView() {
+    return document.querySelector('input[name="view"]:checked').value;
+  }
+
+  function renderAbstract(p) {
+    if (!p.abstract) return el("p", { className: "abstract missing", textContent: "Résumé indisponible." });
+    const text = el("p", { className: "abstract", textContent: p.abstract });
+    if (p.abstract.length < 360) return text;
+    text.classList.add("clamped");
+    const toggle = el("button", { type: "button", className: "btn-link more", textContent: "Lire la suite" });
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.addEventListener("click", () => {
+      const open = text.classList.toggle("clamped") === false;
+      toggle.textContent = open ? "Réduire" : "Lire la suite";
+      toggle.setAttribute("aria-expanded", String(open));
+    });
+    return el("div", {}, text, toggle);
+  }
+
+  function renderResults() {
+    const list = $("results"), view = currentView();
+    list.dataset.view = view;
+    if (!lastResults.length) {
+      const message = lastPeriod
+        ? `Aucun papier similaire publié ${lastPeriod}. Élargissez la période.`
+        : "Aucun papier similaire dans le corpus. Importez d'abord des papiers (papersim ingest-arxiv …).";
+      list.replaceChildren(el("p", { className: "empty", textContent: message }));
+      return;
+    }
+    list.replaceChildren(...lastResults.map((r, i) => {
       const p = r.paper, url = paperLink(p);
       const title = url
         ? el("a", { className: "title", href: url, target: "_blank", rel: "noopener", textContent: p.title })
         : el("span", { className: "title", textContent: p.title });
-      const chips = Object.entries(r.signals || {}).map(([name, s]) => {
-        const [label, help] = SIGNALS[name] || [name, ""];
-        return el("span", { className: "chip", title: help, textContent: `${label} #${s.rank}` });
-      });
-      return el("li", { className: "result" },
-        el("span", { className: "rank", textContent: i + 1 }),
-        el("div", {}, title, el("div", { className: "meta", textContent: paperMeta(p) || p.id }), el("div", { className: "signals" }, ...chips)),
-      );
+      const body = el("div", {}, title);
+      if (view === "compact") {
+        body.append(el("div", { className: "meta", textContent: authorsText(p) || "Auteurs inconnus" }));
+      } else {
+        body.append(el("div", { className: "meta", textContent: paperMeta(p) || p.id }));
+        const chips = Object.entries(r.signals || {}).map(([name, s]) => {
+          const [label, help] = SIGNALS[name] || [name, ""];
+          const text = `${label} #${s.rank}`;
+          if (RANKABLE.has(name) && lastQuery) {
+            return el("a", {
+              className: "chip", href: rankingUrl(name, p.id), target: "_blank", rel: "noopener",
+              title: `${help} — voir les 15 premiers de ce classement`, textContent: text,
+            });
+          }
+          return el("span", { className: "chip", title: help, textContent: text });
+        });
+        body.append(el("div", { className: "signals" }, ...chips));
+        if (view === "abstract") body.append(renderAbstract(p));
+      }
+      return el("li", { className: "result" }, el("span", { className: "rank", textContent: i + 1 }), body);
     }));
-    $("results-section").hidden = false;
-    if (!results.length) {
-      const message = period
-        ? `Aucun papier similaire publié ${period}. Élargissez la période.`
-        : "Aucun papier similaire dans le corpus. Importez d'abord des papiers (papersim ingest-arxiv …).";
-      list.replaceChildren(el("p", { className: "empty", textContent: message }));
-    }
   }
+
+  // Lien vers la page /ranking ; les paramètres sont dans le fragment (#), qui ne part pas au serveur.
+  function rankingUrl(signal, highlightId) {
+    const params = new URLSearchParams({ signal, hl: highlightId });
+    if (lastQuery.mode === "paper") params.set("paper", lastQuery.paperId);
+    else {
+      params.set("q", lastQuery.query);
+      if (lastQuery.title) params.set("title", lastQuery.title);
+    }
+    if (lastYears.min !== null) params.set("from", lastYears.min);
+    if (lastYears.max !== null) params.set("to", lastYears.max);
+    return `/ranking#${params}`;
+  }
+
+  function showResults(results, years = readYears()) {
+    lastResults = results;
+    lastYears = years;
+    lastPeriod = periodLabel(years);
+    $("results-title").textContent = results.length
+      ? `${results.length} papiers similaires${lastPeriod ? " · " + lastPeriod : ""}`
+      : "Aucun résultat";
+    $("results-section").hidden = false;
+    renderResults();
+  }
+
+  // --- Dépôt de fichier ------------------------------------------------------------------
 
   // Ouverte hors du serveur (file://, aperçu data:…), la page ne peut pas joindre l'API.
   const OPENED_AS_FILE = !/^https?:$/.test(location.protocol);
@@ -356,7 +514,6 @@
     if (OPENED_AS_FILE) return showError(FILE_MODE_MESSAGE);
     if (file.size > 20 * 1024 * 1024) return showError("Fichier trop volumineux (20 Mo au plus).");
     const years = readYears();
-    if (years.error) return showError(years.error);
     setBusy(true, `Analyse de « ${file.name} »…`);
     const body = new FormData();
     body.append("file", file);
@@ -368,10 +525,11 @@
       const data = await postJSON("/search/file", { method: "POST", body });
       lastQuery = data.mode === "paper"
         ? { mode: "paper", paperId: data.paper.id }
-        : { mode: "text", query: data.query };
+        : { mode: "text", query: data.query, title: data.extracted && data.extracted.title };
       showWarnings(data.warnings || []);
       showQuery(data, file.name);
       showResults(data.results || [], years);
+      loadCorpusYears();  // un papier reconnu a pu élargir la plage d'années
     } catch (err) {
       showError(networkMessage(err));
     } finally {
@@ -380,17 +538,34 @@
     }
   }
 
+  // --- Initialisation ----------------------------------------------------------------------
+
+  try {
+    const saved = localStorage.getItem(VIEW_KEY);
+    const radio = saved && document.querySelector(`input[name="view"][value="${CSS.escape(saved)}"]`);
+    if (radio) radio.checked = true;
+  } catch { /* stockage indisponible : affichage par défaut */ }
+
+  $("year-filter").hidden = true;
   if (OPENED_AS_FILE) showError(FILE_MODE_MESSAGE);
   else loadCorpusYears();
 
-  for (const input of [yearMin, yearMax]) {
-    input.addEventListener("input", scheduleRefilter);
-    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { clearTimeout(filterTimer); refilter(); } });
+  for (const r of [yearMin, yearMax]) {
+    r.addEventListener("input", () => { updateSlider(r); scheduleRefilter(); });
   }
   $("year-reset").addEventListener("click", () => {
-    yearMin.value = yearMax.value = "";
+    if (!corpus) return;
+    yearMin.value = corpus.min;
+    yearMax.value = corpus.max;
+    updateSlider();
     refilter();
   });
+  for (const radio of document.querySelectorAll('input[name="view"]')) {
+    radio.addEventListener("change", () => {
+      try { localStorage.setItem(VIEW_KEY, radio.value); } catch { /* ignoré */ }
+      renderResults();
+    });
+  }
   $("k").addEventListener("change", refilter);
 
   drop.addEventListener("click", () => !busy && input.click());

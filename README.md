@@ -42,8 +42,17 @@ Ouvrez http://127.0.0.1:8000 et glissez un article (PDF, `.txt` ou `.md`, 20 Mo 
   (sémantique, mots, citations) ;
 - sinon, la recherche se fait sur le **titre et l'abstract extraits** du texte (sans citations).
 
-Une fois les résultats affichés, le champ **Années** filtre par année de publication, sans
-renvoyer le fichier. Le filtre s'applique avant la sélection des meilleurs candidats : on obtient
+Une fois les résultats affichés :
+
+- le **curseur Années** (deux poignées, bornées aux années du corpus) filtre par année de
+  publication, sans renvoyer le fichier. Poignées en butée = pas de filtre de ce côté ;
+- le choix **Affichage** montre au choix le titre et les auteurs (**Small**), les informations
+  de base : année, revue, signaux (**Medium**), ou en plus le résumé (**Large**) ;
+- un clic sur une étiquette **Mots** ou **Sémantique** ouvre, dans un nouvel onglet, les
+  15 premiers papiers de ce seul classement (avant fusion), pour la même recherche et la même
+  période. Le papier cliqué y est mis en évidence. Ce choix est mémorisé dans le navigateur.
+
+Le filtre d'années s'applique avant la sélection des meilleurs candidats : on obtient
 les papiers les plus proches dans la période choisie. Les papiers sans année sont alors exclus.
 
 Seules les 3 premières pages sont lues, et le fichier n'est pas conservé. Les sources externes
@@ -76,9 +85,12 @@ car leur compatibilité exacte n'est pas vérifiée. Changer de source demande d
 | `GET` | `/papers/{id}/similar?k=10&year_min=&year_max=` | Papiers similaires, avec rang par signal |
 | `GET` | `/search?q=...&year_min=&year_max=` | Recherche en texte libre |
 | `POST` | `/search/text` | `{"query", "k", "year_min", "year_max"}` : idem pour un texte long |
+| `GET` | `/papers/{id}/ranking/{signal}?k=15` | Classement d'un seul signal (`semantic`, `lexical`, `citations`) |
+| `POST` | `/search/text/ranking` | `{"query", "signal", "k", "year_min", "year_max"}` : idem pour un texte |
 | `GET` | `/corpus/years` | Années extrêmes du corpus |
 | `POST` | `/search/file` | Fichier en `multipart/form-data` (`file`, `k`, `year_min`, `year_max`) |
 | `GET` | `/` | Interface web |
+| `GET` | `/ranking` | Page du classement d'un signal |
 | `POST` | `/compare` | `{"a": id, "b": id}` : cosinus, références communes, catégories communes |
 
 ## Organisation
@@ -95,6 +107,7 @@ src/papersim/
   extract.py          texte, titre, abstract, identifiants d'un fichier déposé
   filesearch.py       recherche à partir d'un fichier (papier reconnu ou texte libre)
   static/index.html   interface web (glisser-déposer)
+  static/ranking.html page du classement d'un seul signal
   search.py           signaux semantic / lexical / citations + fusion RRF
   api.py, cli.py      FastAPI et ligne de commande
 ```

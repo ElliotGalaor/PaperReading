@@ -49,6 +49,14 @@ class TextSearchRequest(BaseModel):
     year_max: int | None = Field(None, **YEAR_BOUNDS)
 
 
+Signal = Literal["semantic", "lexical", "citations"]
+
+
+class SignalRankingRequest(TextSearchRequest):
+    signal: Signal
+    k: int = Field(15, ge=1, le=50)
+
+
 def _years(year_min: int | None, year_max: int | None) -> search.Years:
     if year_min is not None and year_max is not None and year_min > year_max:
         raise HTTPException(422, "L'année de début doit précéder l'année de fin.")
@@ -88,6 +96,30 @@ def similar(
     return {"query": paper_id, "aspect": aspect, "results": results}
 
 
+@app.get("/papers/{paper_id:path}/ranking/{signal}")
+def paper_ranking(
+    paper_id: str,
+    signal: Signal,
+    k: int = Query(15, ge=1, le=50),
+    year_min: int | None = Query(None, **YEAR_BOUNDS),
+    year_max: int | None = Query(None, **YEAR_BOUNDS),
+    conn: psycopg.Connection = Depends(get_conn),
+) -> dict:
+    """Classement d'un seul signal (avant fusion) pour un papier du corpus."""
+    years = _years(year_min, year_max)
+    try:
+        ranking = search.paper_signal(conn, paper_id, signal, k=k, years=years)
+    except KeyError:
+        raise HTTPException(404, f"Papier inconnu : {paper_id}")
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    return {
+        "signal": signal,
+        "query": {"mode": "paper", "paper": db.get_paper(conn, paper_id)},
+        "results": search.ranking_details(conn, ranking),
+    }
+
+
 @app.get("/papers/{paper_id:path}")
 def get_paper(paper_id: str, conn: psycopg.Connection = Depends(get_conn)) -> dict:
     paper = db.get_paper(conn, paper_id)
@@ -116,6 +148,18 @@ def search_long_text(req: TextSearchRequest, conn: psycopg.Connection = Depends(
     return {"results": results}
 
 
+@app.post("/search/text/ranking")
+def text_ranking(req: SignalRankingRequest, conn: psycopg.Connection = Depends(get_conn)) -> dict:
+    """Classement d'un seul signal (avant fusion) pour un texte libre."""
+    years = _years(req.year_min, req.year_max)
+    embedder = _embedder() if req.signal == "semantic" else None
+    try:
+        ranking = search.text_signal(conn, embedder, req.query, req.signal, k=req.k, years=years)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    return {"signal": req.signal, "query": {"mode": "text"}, "results": search.ranking_details(conn, ranking)}
+
+
 @app.get("/corpus/years")
 def corpus_years(conn: psycopg.Connection = Depends(get_conn)) -> dict:
     """Années extrêmes du corpus et nombre de papiers."""
@@ -138,6 +182,12 @@ def compare(req: CompareRequest, conn: psycopg.Connection = Depends(get_conn)) -
 def index() -> str:
     """Interface web : glisser-déposer un fichier pour trouver les papiers similaires."""
     return files("papersim").joinpath("static/index.html").read_text(encoding="utf-8")
+
+
+@app.get("/ranking", response_class=HTMLResponse, include_in_schema=False)
+def ranking_page() -> str:
+    """Page du classement d'un signal (ouverte depuis les étiquettes des résultats)."""
+    return files("papersim").joinpath("static/ranking.html").read_text(encoding="utf-8")
 
 
 @app.post("/search/file")
