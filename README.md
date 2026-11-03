@@ -50,6 +50,14 @@ Le cadre du papier déposé affiche aussi ses **thèmes** et environ **8 mots-cl
   réseau), puis nettoyés (mots vides, verbes, doublons). Quelques expressions imparfaites restent
   possibles : il n'y a pas d'analyse grammaticale.
 
+Chaque **nom d'auteur** est un lien vers ses publications, sur le site d'où vient le papier :
+recherche d'auteur arXiv (format « Nom, Prénom », le plus précis) pour un papier arXiv,
+Semantic Scholar pour un papier qui en vient, Google Scholar sinon. C'est une recherche par nom :
+des homonymes peuvent apparaître. « et N autres » déplie la liste complète des auteurs.
+
+Les **formules LaTeX** des titres et résumés (`$T_c$`, `$H$-$φ$`…) sont mises en forme avec
+KaTeX, chargé depuis un CDN (jsDelivr) : sans connexion Internet, le texte brut reste affiché.
+
 Une fois les résultats affichés :
 
 - le **curseur Années** (deux poignées, bornées aux années du corpus) filtre par année de
@@ -117,6 +125,8 @@ src/papersim/
   keywords.py         mots-clés (YAKE) et thèmes (catégories arXiv) du papier déposé
   static/index.html   interface web (glisser-déposer)
   static/ranking.html page du classement d'un seul signal
+  static/authors.js   liens des auteurs vers leur bibliographie (partagé par les deux pages)
+  static/math.js      rendu des formules LaTeX avec KaTeX (partagé par les deux pages)
   search.py           signaux semantic / lexical / citations + fusion RRF
   api.py, cli.py      FastAPI et ligne de commande
 ```

@@ -113,3 +113,13 @@ def test_ranking_page_is_served(client):
     resp = tc.get("/ranking")
     assert resp.status_code == 200
     assert "Classement" in resp.text
+
+
+def test_shared_authors_script_is_served(client):
+    tc, _ = client
+    for page in ("/", "/ranking"):
+        assert '<script src="/static/authors.js"></script>' in tc.get(page).text
+    resp = tc.get("/static/authors.js")
+    assert resp.status_code == 200
+    assert "javascript" in resp.headers["content-type"]
+    assert "PaperAuthors" in resp.text

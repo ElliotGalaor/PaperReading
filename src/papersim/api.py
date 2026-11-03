@@ -11,6 +11,7 @@ from typing import Literal
 import psycopg
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import db, extract, filesearch, pipeline, search
@@ -22,6 +23,9 @@ from .ingest import arxiv, openalex
 app = FastAPI(title="papersim", version="0.1.0")
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+
+# Scripts partagés par les pages web (ex. /static/authors.js).
+app.mount("/static", StaticFiles(directory=str(files("papersim").joinpath("static"))), name="static")
 
 
 def get_conn() -> Iterator[psycopg.Connection]:
