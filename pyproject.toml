@@ -15,6 +15,7 @@ dependencies = [
     "numpy>=1.26",
     "pypdf>=4.0",
     "fonttools>=4.40",  # décodage des polices LaTeX (symboles mathématiques) par pypdf
+    "yake>=0.4.8",  # mots-clés du papier déposé
     "python-multipart>=0.0.9",
 ]
 

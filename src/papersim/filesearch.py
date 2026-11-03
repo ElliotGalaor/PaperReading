@@ -14,7 +14,7 @@ import logging
 import httpx
 import psycopg
 
-from . import db, pipeline, search
+from . import db, keywords, pipeline, search
 from .config import settings
 from .extract import Extracted, title_matches
 from .ingest import arxiv, openalex
@@ -75,6 +75,18 @@ def _query_embedder(warnings: list[str]):
         return None
 
 
+def analyze(title: str | None, abstract: str | None, fallback_text: str,
+            categories: list[str], results: list[dict]) -> dict:
+    """Mots-clés et thèmes du document déposé."""
+    if abstract:
+        kw = keywords.extract_keywords(f"{title or ''}. {abstract}", body=abstract)
+    else:
+        kw = keywords.extract_keywords(fallback_text)
+    if categories:
+        return {"keywords": kw, "themes": keywords.themes_from_categories(categories), "themes_source": "paper"}
+    return {"keywords": kw, "themes": keywords.themes_from_results(results), "themes_source": "similar"}
+
+
 def search_document(
     conn: psycopg.Connection, ex: Extracted, k: int = 10, years: search.Years = search.ANY_YEAR
 ) -> dict:
@@ -84,15 +96,20 @@ def search_document(
     if paper is not None:
         pid = _index_paper(conn, paper, warnings)
         if pid:
+            stored = db.get_paper(conn, pid)
+            results = search.find_similar(conn, pid, k=k, years=years)
             return {
                 "mode": "paper",
-                "paper": db.get_paper(conn, pid),
-                "results": search.find_similar(conn, pid, k=k, years=years),
+                "paper": stored,
+                "results": results,
+                "analysis": analyze(stored.get("title"), stored.get("abstract"), ex.query_text(),
+                                    stored.get("categories") or [], results),
                 "warnings": warnings,
             }
 
     embedder = _query_embedder(warnings)
     query = ex.query_text()
+    results = search.search_text(conn, embedder, query, k=k, years=years)
     return {
         "mode": "text",
         # Renvoyé pour pouvoir relancer la recherche (filtre d'années) sans renvoyer le fichier.
@@ -102,6 +119,7 @@ def search_document(
             "abstract": ex.abstract,
             "identifiers": ex.arxiv_ids + ex.dois,
         },
-        "results": search.search_text(conn, embedder, query, k=k, years=years),
+        "results": results,
+        "analysis": analyze(ex.title, ex.abstract, query, [], results),
         "warnings": warnings,
     }

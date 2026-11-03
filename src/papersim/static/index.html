@@ -76,6 +76,14 @@
   .query .label { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
   .query h2 { margin: 4px 0 4px; font-size: 1.1rem; }
   .query p { margin: 6px 0 0; color: var(--muted); font-size: .93rem; }
+  .analysis { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); display: grid; gap: 10px; }
+  .analysis-row { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); gap: 4px 10px; align-items: baseline; }
+  @media (max-width: 520px) { .analysis-row { grid-template-columns: minmax(0, 1fr); } }
+  .analysis-label { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .analysis-label small { display: block; text-transform: none; letter-spacing: 0; font-size: .74rem; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+  .tag { font-size: .84rem; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border); color: var(--text); }
+  .tag.theme { background: var(--accent-soft); border-color: transparent; color: var(--accent); font-weight: 600; }
 
   /* --- Barre de contrôle des résultats ------------------------------------- */
   h3.results-title { margin: 32px 0 12px; font-size: 1rem; }
@@ -295,7 +303,29 @@
         el("p", { textContent: abstract }),
       );
     }
+    const analysis = renderAnalysis(data.analysis);
+    if (analysis) box.append(analysis);
     box.hidden = false;
+  }
+
+  // Thèmes (catégories) et mots-clés identifiés dans le papier déposé.
+  function renderAnalysis(a) {
+    if (!a || (!(a.themes || []).length && !(a.keywords || []).length)) return null;
+    const rows = [];
+    if ((a.themes || []).length) {
+      const label = el("span", { className: "analysis-label", textContent: "Thèmes" });
+      if (a.themes_source === "similar") label.append(el("small", { textContent: "d'après les papiers similaires" }));
+      rows.push(el("div", { className: "analysis-row" }, label,
+        el("ul", { className: "tags", ariaLabel: "Thèmes" },
+          ...a.themes.map((t) => el("li", { className: "tag theme", textContent: t.name, title: t.code })))));
+    }
+    if ((a.keywords || []).length) {
+      rows.push(el("div", { className: "analysis-row" },
+        el("span", { className: "analysis-label", textContent: "Mots-clés" }),
+        el("ul", { className: "tags", ariaLabel: "Mots-clés" },
+          ...a.keywords.map((k) => el("li", { className: "tag", textContent: k })))));
+    }
+    return el("div", { className: "analysis" }, ...rows);
   }
 
   // --- Curseur d'années -----------------------------------------------------------

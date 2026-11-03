@@ -42,6 +42,14 @@ Ouvrez http://127.0.0.1:8000 et glissez un article (PDF, `.txt` ou `.md`, 20 Mo 
   (sémantique, mots, citations) ;
 - sinon, la recherche se fait sur le **titre et l'abstract extraits** du texte (sans citations).
 
+Le cadre du papier déposé affiche aussi ses **thèmes** et environ **8 mots-clés** :
+
+- thèmes : catégories arXiv du papier, en clair (« Supraconductivité »…). Pour un texte non
+  reconnu, ce sont les catégories les plus fréquentes parmi les papiers similaires ;
+- mots-clés : extraits du titre et de l'abstract par YAKE (méthode statistique, sans modèle ni
+  réseau), puis nettoyés (mots vides, verbes, doublons). Quelques expressions imparfaites restent
+  possibles : il n'y a pas d'analyse grammaticale.
+
 Une fois les résultats affichés :
 
 - le **curseur Années** (deux poignées, bornées aux années du corpus) filtre par année de
@@ -106,6 +114,7 @@ src/papersim/
   pipeline.py         stockage -> enrichissement OpenAlex -> embeddings
   extract.py          texte, titre, abstract, identifiants d'un fichier déposé
   filesearch.py       recherche à partir d'un fichier (papier reconnu ou texte libre)
+  keywords.py         mots-clés (YAKE) et thèmes (catégories arXiv) du papier déposé
   static/index.html   interface web (glisser-déposer)
   static/ranking.html page du classement d'un seul signal
   search.py           signaux semantic / lexical / citations + fusion RRF
