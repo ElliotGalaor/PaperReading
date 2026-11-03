@@ -5,19 +5,23 @@ arxiv:hep-th/9901001), d'où le convertisseur {paper_id:path}.
 """
 
 from collections.abc import Iterator
+from importlib.resources import files
 from typing import Literal
 
 import psycopg
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from . import db, pipeline, search
+from . import db, extract, filesearch, pipeline, search
 from .config import settings
 from .embeddings import get_embedder
 from .ids import normalize_doi
 from .ingest import arxiv, openalex
 
 app = FastAPI(title="papersim", version="0.1.0")
+
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 
 def get_conn() -> Iterator[psycopg.Connection]:
@@ -89,3 +93,26 @@ def compare(req: CompareRequest, conn: psycopg.Connection = Depends(get_conn)) -
         return search.compare(conn, req.a, req.b)
     except KeyError as e:
         raise HTTPException(404, f"Papier(s) inconnu(s) : {e.args[0]}")
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def index() -> str:
+    """Interface web : glisser-déposer un fichier pour trouver les papiers similaires."""
+    return files("papersim").joinpath("static/index.html").read_text(encoding="utf-8")
+
+
+@app.post("/search/file")
+def search_file(
+    file: UploadFile = File(..., description="PDF, .txt ou .md"),
+    k: int = Form(10, ge=1, le=50),
+    conn: psycopg.Connection = Depends(get_conn),
+) -> dict:
+    """Papiers similaires à un fichier déposé (le fichier n'est pas conservé)."""
+    data = file.file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "Fichier trop volumineux (20 Mo au plus).")
+    try:
+        doc = extract.extract_document(file.filename or "", data)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    return filesearch.search_document(conn, doc, k=k)

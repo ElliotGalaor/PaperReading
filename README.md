@@ -29,8 +29,21 @@ Interroger :
 ```bash
 papersim similar arxiv:2101.00001
 papersim search "suppression of superconductivity by disorder"
-papersim serve                 # API sur http://127.0.0.1:8000/docs
+papersim serve                 # interface sur http://127.0.0.1:8000, API sur /docs
 ```
+
+### Interface web
+
+Ouvrez http://127.0.0.1:8000 et glissez un article (PDF, `.txt` ou `.md`, 20 Mo au plus) :
+
+- si la première page porte un identifiant arXiv ou un DOI, et que le titre retrouvé en ligne
+  correspond au fichier, le papier est **ajouté au corpus** et comparé avec tous les signaux
+  (sémantique, mots, citations) ;
+- sinon, la recherche se fait sur le **titre et l'abstract extraits** du texte (sans citations).
+
+Seules les 3 premières pages sont lues, et le fichier n'est pas conservé. Les sources externes
+indisponibles (arXiv, OpenAlex, Semantic Scholar) n'empêchent pas la recherche : un
+avertissement s'affiche. Un PDF scanné (image sans texte) est refusé.
 
 Le premier calcul d'embeddings télécharge SPECTER2 (~500 Mo).
 
@@ -57,6 +70,8 @@ car leur compatibilité exacte n'est pas vérifiée. Changer de source demande d
 | `GET` | `/papers/{id}` | Fiche d'un papier |
 | `GET` | `/papers/{id}/similar?k=10&aspect=topic` | Papiers similaires, avec rang par signal |
 | `GET` | `/search?q=...` | Recherche en texte libre |
+| `POST` | `/search/file` | Fichier en `multipart/form-data` (`file`, `k`) : papiers similaires |
+| `GET` | `/` | Interface web |
 | `POST` | `/compare` | `{"a": id, "b": id}` : cosinus, références communes, catégories communes |
 
 ## Organisation
@@ -70,6 +85,9 @@ src/papersim/
   db.py, schema.sql   PostgreSQL : papers, paper_embeddings (par aspect), paper_references
   embeddings.py       SPECTER2 (adapter proximity ; adhoc_query pour le texte libre)
   pipeline.py         stockage -> enrichissement OpenAlex -> embeddings
+  extract.py          texte, titre, abstract, identifiants d'un fichier déposé
+  filesearch.py       recherche à partir d'un fichier (papier reconnu ou texte libre)
+  static/index.html   interface web (glisser-déposer)
   search.py           signaux semantic / lexical / citations + fusion RRF
   api.py, cli.py      FastAPI et ligne de commande
 ```

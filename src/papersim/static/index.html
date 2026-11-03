@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PaperReading</title>
+<style>
+  :root {
+    --bg: #f6f5f1;
+    --surface: #ffffff;
+    --text: #1d1d1b;
+    --muted: #6b6a64;
+    --border: #e2e0d8;
+    --accent: #2f5d8a;
+    --accent-soft: #e6eef6;
+    --warn-bg: #fdf3dc;
+    --warn-text: #7a5a10;
+    --error-bg: #fbe7e5;
+    --error-text: #8f2a20;
+    --radius: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161614;
+      --surface: #201f1d;
+      --text: #ecebe6;
+      --muted: #a3a29b;
+      --border: #34332f;
+      --accent: #8db7e0;
+      --accent-soft: #23303d;
+      --warn-bg: #3a3019;
+      --warn-text: #f0d48a;
+      --error-bg: #3d2220;
+      --error-text: #f4aaa2;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 860px; margin: 0 auto; padding: 40px 16px 64px; }
+  header h1 { margin: 0; font-size: 1.8rem; letter-spacing: -0.01em; }
+  header p { margin: 4px 0 28px; color: var(--muted); }
+
+  .drop {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px; min-height: 200px; padding: 24px; text-align: center;
+    background: var(--surface); border: 2px dashed var(--border); border-radius: var(--radius);
+    cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  .drop:hover, .drop:focus-visible { border-color: var(--accent); outline: none; }
+  .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop.busy { cursor: progress; opacity: .7; }
+  .drop svg { width: 40px; height: 40px; color: var(--accent); }
+  .drop strong { font-size: 1.05rem; }
+  .drop .hint { color: var(--muted); font-size: .9rem; }
+  .linklike { color: var(--accent); text-decoration: underline; }
+
+  .options { display: flex; gap: 12px; align-items: center; margin: 14px 2px 0; color: var(--muted); font-size: .92rem; }
+  select { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; }
+
+  .status { display: flex; align-items: center; gap: 10px; margin-top: 24px; color: var(--muted); }
+  .spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .notice { margin-top: 16px; padding: 12px 14px; border-radius: 10px; font-size: .93rem; }
+  .notice.warn { background: var(--warn-bg); color: var(--warn-text); }
+  .notice.error { background: var(--error-bg); color: var(--error-text); }
+  .notice ul { margin: 0; padding-left: 18px; }
+
+  .query { margin-top: 28px; padding: 16px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  .query .label { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .query h2 { margin: 4px 0 4px; font-size: 1.1rem; }
+  .query p { margin: 6px 0 0; color: var(--muted); font-size: .93rem; }
+
+  h3.results-title { margin: 32px 0 10px; font-size: 1rem; }
+  ol.results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .result { display: grid; grid-template-columns: 2.2em 1fr; gap: 4px 10px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  .rank { color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 1px; }
+  .result a.title { color: var(--text); font-weight: 600; text-decoration: none; }
+  .result a.title:hover { color: var(--accent); text-decoration: underline; }
+  .meta { color: var(--muted); font-size: .88rem; margin-top: 2px; }
+  .signals { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip { font-size: .78rem; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+  .empty { color: var(--muted); margin-top: 16px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>PaperReading</h1>
+    <p>Déposez un article pour trouver les papiers les plus proches du corpus.</p>
+  </header>
+
+  <div id="drop" class="drop" role="button" tabindex="0" aria-describedby="drop-hint">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 17v-6"/><path d="m9.5 13.5 2.5-2.5 2.5 2.5"/>
+    </svg>
+    <strong>Glissez un fichier ici</strong>
+    <span id="drop-hint" class="hint">ou <span class="linklike">choisissez-le</span> · PDF, .txt ou .md · 20 Mo max</span>
+  </div>
+  <input id="file" class="sr-only" type="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown">
+
+  <div class="options">
+    <label for="k">Nombre de résultats</label>
+    <select id="k"><option>5</option><option selected>10</option><option>20</option></select>
+  </div>
+
+  <div id="status" class="status" hidden><div class="spinner"></div><span id="status-text"></span></div>
+  <div id="error" class="notice error" role="alert" hidden></div>
+  <div id="warnings" class="notice warn" hidden><ul></ul></div>
+  <section id="query" class="query" hidden aria-live="polite"></section>
+  <section id="results-section" hidden>
+    <h3 class="results-title" id="results-title"></h3>
+    <ol id="results" class="results"></ol>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const drop = $("drop"), input = $("file");
+  const SIGNALS = {
+    semantic: ["Sémantique", "Proximité de sens entre les abstracts (SPECTER2)"],
+    lexical: ["Mots", "Mots en commun dans le titre et l'abstract"],
+    citations: ["Citations", "Références bibliographiques en commun"],
+  };
+  let busy = false;
+
+  function el(tag, props = {}, ...children) {
+    const node = document.createElement(tag);
+    Object.assign(node, props);
+    for (const c of children) if (c != null) node.append(c);
+    return node;
+  }
+
+  function paperLink(p) {
+    if (p.arxiv_id) return "https://arxiv.org/abs/" + p.arxiv_id;
+    if (p.doi) return "https://doi.org/" + p.doi;
+    return null;
+  }
+
+  function paperMeta(p) {
+    const authors = p.authors || [];
+    const names = authors.slice(0, 3).join(", ") + (authors.length > 3 ? " et al." : "");
+    return [names, p.year, p.venue].filter(Boolean).join(" · ");
+  }
+
+  function setBusy(on, text) {
+    busy = on;
+    drop.classList.toggle("busy", on);
+    drop.setAttribute("aria-busy", on ? "true" : "false");
+    $("status").hidden = !on;
+    $("status-text").textContent = text || "";
+  }
+
+  function reset() {
+    for (const id of ["error", "warnings", "query", "results-section"]) $(id).hidden = true;
+  }
+
+  function showError(message) {
+    $("error").textContent = message;
+    $("error").hidden = false;
+  }
+
+  function showWarnings(list) {
+    const ul = $("warnings").querySelector("ul");
+    ul.replaceChildren(...list.map((w) => el("li", { textContent: w })));
+    $("warnings").hidden = list.length === 0;
+  }
+
+  function showQuery(data, fileName) {
+    const box = $("query");
+    if (data.mode === "paper") {
+      const p = data.paper, url = paperLink(p);
+      const title = url ? el("a", { href: url, target: "_blank", rel: "noopener", textContent: p.title, className: "linklike" }) : p.title;
+      box.replaceChildren(
+        el("div", { className: "label", textContent: "Papier reconnu" }),
+        el("h2", {}, title),
+        el("p", { textContent: paperMeta(p) || p.id }),
+      );
+    } else {
+      const ex = data.extracted || {};
+      const abstract = ex.abstract ? ex.abstract.slice(0, 320) + (ex.abstract.length > 320 ? "…" : "") : "Abstract non détecté : recherche sur le début du texte.";
+      box.replaceChildren(
+        el("div", { className: "label", textContent: "Recherche à partir du texte extrait" }),
+        el("h2", { textContent: ex.title || fileName }),
+        el("p", { textContent: abstract }),
+      );
+    }
+    box.hidden = false;
+  }
+
+  function showResults(results) {
+    const list = $("results");
+    $("results-title").textContent = results.length ? `${results.length} papiers similaires` : "";
+    list.replaceChildren(...results.map((r, i) => {
+      const p = r.paper, url = paperLink(p);
+      const title = url
+        ? el("a", { className: "title", href: url, target: "_blank", rel: "noopener", textContent: p.title })
+        : el("span", { className: "title", textContent: p.title });
+      const chips = Object.entries(r.signals || {}).map(([name, s]) => {
+        const [label, help] = SIGNALS[name] || [name, ""];
+        return el("span", { className: "chip", title: help, textContent: `${label} #${s.rank}` });
+      });
+      return el("li", { className: "result" },
+        el("span", { className: "rank", textContent: i + 1 }),
+        el("div", {}, title, el("div", { className: "meta", textContent: paperMeta(p) || p.id }), el("div", { className: "signals" }, ...chips)),
+      );
+    }));
+    $("results-section").hidden = false;
+    if (!results.length) {
+      list.replaceChildren(el("p", { className: "empty", textContent: "Aucun papier similaire dans le corpus. Importez d'abord des papiers (papersim ingest-arxiv …)." }));
+    }
+  }
+
+  async function search(file) {
+    if (busy || !file) return;
+    reset();
+    if (file.size > 20 * 1024 * 1024) return showError("Fichier trop volumineux (20 Mo au plus).");
+    setBusy(true, `Analyse de « ${file.name} »…`);
+    const body = new FormData();
+    body.append("file", file);
+    body.append("k", $("k").value);
+    try {
+      const resp = await fetch("/search/file", { method: "POST", body });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        const detail = typeof data.detail === "string" ? data.detail : `Erreur ${resp.status}`;
+        throw new Error(detail);
+      }
+      showWarnings(data.warnings || []);
+      showQuery(data, file.name);
+      showResults(data.results || []);
+    } catch (err) {
+      showError(err.message === "Failed to fetch" ? "Le serveur ne répond pas. Est-il lancé (papersim serve) ?" : err.message);
+    } finally {
+      setBusy(false);
+      input.value = "";
+    }
+  }
+
+  drop.addEventListener("click", () => !busy && input.click());
+  drop.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (!busy) input.click(); }
+  });
+  input.addEventListener("change", () => search(input.files[0]));
+
+  // Empêche le navigateur d'ouvrir un fichier lâché à côté de la zone.
+  for (const type of ["dragover", "drop"]) window.addEventListener(type, (e) => e.preventDefault());
+  let depth = 0;
+  drop.addEventListener("dragenter", () => { depth++; drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => { if (--depth <= 0) { depth = 0; drop.classList.remove("over"); } });
+  drop.addEventListener("drop", (e) => {
+    depth = 0;
+    drop.classList.remove("over");
+    search(e.dataTransfer.files[0]);  // un seul fichier à la fois : le premier
+  });
+})();
+</script>
+</body>
+</html>
