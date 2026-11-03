@@ -12,6 +12,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from . import db, pipeline, search
+from .config import settings
 from .embeddings import get_embedder
 from .ids import normalize_doi
 from .ingest import arxiv, openalex
@@ -46,7 +47,7 @@ def add_papers(req: IngestRequest, conn: psycopg.Connection = Depends(get_conn))
             work = openalex.get_work_by_doi(doi, client)
             if work:
                 papers.append(work)
-    ids = pipeline.ingest(conn, papers, embedder=get_embedder())
+    ids = pipeline.ingest(conn, papers)
     return {"ingested": ids}
 
 
@@ -78,7 +79,8 @@ def search_text(
     k: int = Query(10, ge=1, le=100),
     conn: psycopg.Connection = Depends(get_conn),
 ) -> dict:
-    return {"query": q, "results": search.search_text(conn, get_embedder(), q, k=k)}
+    embedder = get_embedder() if settings.embedding_source == "local" else None
+    return {"query": q, "results": search.search_text(conn, embedder, q, k=k)}
 
 
 @app.post("/compare")

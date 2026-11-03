@@ -13,7 +13,9 @@ from psycopg.types.json import Jsonb
 from .config import settings
 from .models import Paper
 
-PAPER_COLUMNS = "id, title, abstract, authors, year, venue, categories, doi, arxiv_id, openalex_id, source"
+PAPER_COLUMNS = (
+    "id, title, abstract, authors, year, venue, categories, doi, arxiv_id, openalex_id, s2_id, source"
+)
 
 
 @contextmanager
@@ -39,11 +41,11 @@ def _find_existing(conn: psycopg.Connection, p: Paper) -> dict | None:
     """Déduplication : un papier déjà connu par l'un de ses identifiants."""
     return conn.execute(
         """
-        SELECT id, title, abstract FROM papers
-        WHERE arxiv_id = %(a)s OR doi = %(d)s OR openalex_id = %(o)s
+        SELECT id, abstract FROM papers
+        WHERE arxiv_id = %(a)s OR doi = %(d)s OR openalex_id = %(o)s OR s2_id = %(s)s
         LIMIT 1
         """,
-        {"a": p.arxiv_id, "d": p.doi, "o": p.openalex_id},
+        {"a": p.arxiv_id, "d": p.doi, "o": p.openalex_id, "s": p.s2_id},
     ).fetchone()
 
 
@@ -55,12 +57,13 @@ def upsert_paper(conn: psycopg.Connection, p: Paper) -> str:
     conn.execute(
         """
         INSERT INTO papers (id, title, abstract, authors, year, venue, categories,
-                            doi, arxiv_id, openalex_id, source)
+                            doi, arxiv_id, openalex_id, s2_id, source)
         VALUES (%(id)s, %(title)s, %(abstract)s, %(authors)s, %(year)s, %(venue)s, %(categories)s,
-                %(doi)s, %(arxiv_id)s, %(openalex_id)s, %(source)s)
+                %(doi)s, %(arxiv_id)s, %(openalex_id)s, %(s2_id)s, %(source)s)
         ON CONFLICT (id) DO UPDATE SET
-            title       = COALESCE(NULLIF(EXCLUDED.title, ''), papers.title),
-            abstract    = COALESCE(EXCLUDED.abstract, papers.abstract),
+            -- Le texte déjà connu est conservé (il a servi aux embeddings) ;
+            -- un abstract manquant est complété.
+            abstract    = COALESCE(papers.abstract, EXCLUDED.abstract),
             authors     = CASE WHEN jsonb_array_length(EXCLUDED.authors) > 0
                                THEN EXCLUDED.authors ELSE papers.authors END,
             year        = COALESCE(EXCLUDED.year, papers.year),
@@ -70,6 +73,7 @@ def upsert_paper(conn: psycopg.Connection, p: Paper) -> str:
             doi         = COALESCE(papers.doi, EXCLUDED.doi),
             arxiv_id    = COALESCE(papers.arxiv_id, EXCLUDED.arxiv_id),
             openalex_id = COALESCE(papers.openalex_id, EXCLUDED.openalex_id),
+            s2_id       = COALESCE(papers.s2_id, EXCLUDED.s2_id),
             updated_at  = now()
         """,
         {
@@ -83,15 +87,13 @@ def upsert_paper(conn: psycopg.Connection, p: Paper) -> str:
             "doi": p.doi,
             "arxiv_id": p.arxiv_id,
             "openalex_id": p.openalex_id,
+            "s2_id": p.s2_id,
             "source": p.source,
         },
     )
 
-    # Le texte a changé : les embeddings existants ne sont plus valables.
-    if existing and (
-        (p.title and p.title != existing["title"])
-        or (p.abstract and p.abstract != existing["abstract"])
-    ):
+    # Abstract ajouté à un papier qui n'en avait pas : l'embedding (titre seul) est à refaire.
+    if existing and existing["abstract"] is None and p.abstract:
         conn.execute("DELETE FROM paper_embeddings WHERE paper_id = %s", (pid,))
 
     if p.references:
@@ -140,11 +142,11 @@ def count_references(conn: psycopg.Connection, paper_id: str) -> int:
 
 
 def papers_missing_embedding(
-    conn: psycopg.Connection, aspect: str, model: str, limit: int
+    conn: psycopg.Connection, aspect: str, model: str, limit: int | None = None
 ) -> list[dict]:
     return conn.execute(
         """
-        SELECT p.id, p.title, p.abstract FROM papers p
+        SELECT p.id, p.title, p.abstract, p.doi, p.arxiv_id, p.s2_id FROM papers p
         WHERE NOT EXISTS (
             SELECT 1 FROM paper_embeddings e
             WHERE e.paper_id = p.id AND e.aspect = %(aspect)s AND e.model = %(model)s

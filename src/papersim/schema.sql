@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS papers (
 );
 CREATE INDEX IF NOT EXISTS papers_tsv_idx ON papers USING gin (tsv);
 
+-- Ajouts ultérieurs (idempotents, pour les bases déjà créées).
+ALTER TABLE papers ADD COLUMN IF NOT EXISTS s2_id TEXT UNIQUE;
+
 -- Un embedding par (papier, aspect, modèle).
 -- MVP : aspect = 'topic' (titre + abstract). Plus tard : 'problem', 'method', 'limitations'...
 CREATE TABLE IF NOT EXISTS paper_embeddings (

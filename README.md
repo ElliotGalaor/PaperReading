@@ -1,7 +1,7 @@
 # PaperReading
 
 Recherche de papiers scientifiques similaires (paquet Python et commande : `papersim`). Cette version est le **MVP (étape 1)** : abstracts
-via arXiv / OpenAlex, embeddings SPECTER2, recherche hybride fusionnée par RRF.
+via arXiv / OpenAlex / Semantic Scholar, embeddings SPECTER2, recherche hybride fusionnée par RRF.
 
 ## Démarrage
 
@@ -12,7 +12,7 @@ docker compose up -d
 python -m venv .venv
 .venv\Scripts\activate        # Windows ; source .venv/bin/activate ailleurs
 pip install -e ".[embeddings,dev]"
-copy .env.example .env         # puis renseigner PAPERSIM_OPENALEX_MAILTO
+copy .env.example .env         # puis renseigner les clés OpenAlex et Semantic Scholar
 papersim init-db
 ```
 
@@ -21,6 +21,7 @@ Constituer un corpus :
 ```bash
 papersim ingest-arxiv 'cat:cond-mat.supr-con AND abs:"pseudogap"' --max 300
 papersim ingest-openalex "topological insulator" --max 200 --filter "publication_year:>2018"
+papersim ingest-s2 "quantum spin liquid" --max 200 --year 2018- --fields Physics
 ```
 
 Interroger :
@@ -32,6 +33,21 @@ papersim serve                 # API sur http://127.0.0.1:8000/docs
 ```
 
 Le premier calcul d'embeddings télécharge SPECTER2 (~500 Mo).
+
+### Embeddings : local ou Semantic Scholar
+
+`PAPERSIM_EMBEDDING_SOURCE` choisit d'où viennent les vecteurs SPECTER2 :
+
+- `local` (défaut) : calculés sur cette machine. Nécessite `pip install -e ".[embeddings]"` (torch).
+- `s2` : téléchargés depuis Semantic Scholar, y compris pour les papiers importés depuis arXiv ou
+  OpenAlex (recherche par identifiant arXiv / DOI). Pas de torch ni de GPU. Demandez une clé
+  gratuite : sans clé, l'API répond presque toujours « 429 Too Many Requests ».
+
+Les deux familles de vecteurs sont rangées sous des noms de modèle distincts
+(`allenai/specter2` et `semantic-scholar/specter_v2`) et ne sont jamais comparées entre elles,
+car leur compatibilité exacte n'est pas vérifiée. Changer de source demande de lancer
+`papersim embed`. En mode `s2`, la recherche en texte libre n'utilise que le signal lexical
+(aucun modèle local ne peut encoder la requête).
 
 ## API
 
@@ -49,6 +65,7 @@ Le premier calcul d'embeddings télécharge SPECTER2 (~500 Mo).
 src/papersim/
   ingest/arxiv.py     API arXiv (Atom), 1 requête / 3 s
   ingest/openalex.py  API OpenAlex : abstracts, références (graphe de citations)
+  ingest/semantic_scholar.py  API Semantic Scholar : métadonnées + vecteurs SPECTER2
   ids.py              normalisation arXiv / DOI / OpenAlex (déduplication)
   db.py, schema.sql   PostgreSQL : papers, paper_embeddings (par aspect), paper_references
   embeddings.py       SPECTER2 (adapter proximity ; adhoc_query pour le texte libre)
@@ -57,7 +74,7 @@ src/papersim/
   api.py, cli.py      FastAPI et ligne de commande
 ```
 
-Identifiant interne : `arxiv:<id>` en priorité, sinon `doi:<doi>`, sinon `openalex:<W…>`.
+Identifiant interne : `arxiv:<id>` en priorité, sinon `doi:<doi>`, `openalex:<W…>` ou `s2:<paperId>`.
 Un papier déjà connu par l'un de ses identifiants est fusionné, pas dupliqué.
 
 ## Choix de conception
@@ -76,6 +93,9 @@ Un papier déjà connu par l'un de ses identifiants est fusionné, pas dupliqué
 - Pour un papier arXiv, la notice OpenAlex liée au DOI arXiv a parfois moins de références que la
   version publiée en revue.
 - Les papiers introuvables sur OpenAlex sont re-tentés à chaque `papersim enrich`.
+- Les références viennent uniquement d'OpenAlex : un papier Semantic Scholar sans DOI ni
+  identifiant arXiv n'a pas de signal de citations.
+- Quand deux sources donnent un abstract différent, le premier enregistré est conservé.
 - L'import via `POST /papers` est synchrone (acceptable pour quelques dizaines de papiers).
 
 ## Suite (feuille de route)

@@ -49,7 +49,7 @@ def vector_ranking(
         ORDER BY embedding <=> %(emb)s
         LIMIT %(k)s
         """,
-        {"emb": embedding, "aspect": aspect, "model": model or settings.embedding_model,
+        {"emb": embedding, "aspect": aspect, "model": model or settings.active_embedding_model,
          "exclude": exclude, "k": k},
     ).fetchall()
     return [(r["paper_id"], float(r["score"])) for r in rows]
@@ -137,7 +137,7 @@ def find_similar(
         raise KeyError(paper_id)
 
     signals: dict[str, Ranking] = {}
-    emb = db.get_embedding(conn, paper_id, TOPIC, settings.embedding_model)
+    emb = db.get_embedding(conn, paper_id, TOPIC, settings.active_embedding_model)
     if emb is not None:
         signals["semantic"] = vector_ranking(conn, emb, k=pool, exclude=paper_id)
     text = f"{paper['title']} {paper['abstract'] or ''}"
@@ -150,11 +150,14 @@ def search_text(
     conn: psycopg.Connection, embedder, query: str, *, k: int = 10, pool: int = 50,
     weights: dict[str, float] | None = None,
 ) -> list[dict]:
-    """Recherche par texte libre (une phrase, un problème, un abstract)."""
-    signals = {
-        "semantic": vector_ranking(conn, embedder.embed_query(query), k=pool),
-        "lexical": lexical_ranking(conn, query, k=pool),
-    }
+    """Recherche par texte libre (une phrase, un problème, un abstract).
+
+    Sans embedder (mode "s2" : pas de modèle local pour encoder la requête),
+    seul le signal lexical est utilisé.
+    """
+    signals = {"lexical": lexical_ranking(conn, query, k=pool)}
+    if embedder is not None:
+        signals["semantic"] = vector_ranking(conn, embedder.embed_query(query), k=pool)
     return _fuse(conn, signals, k, weights)
 
 
@@ -172,7 +175,7 @@ def compare(conn: psycopg.Connection, a: str, b: str) -> dict:
           ON ea.aspect = eb.aspect AND ea.model = eb.model
         WHERE ea.paper_id = %s AND eb.paper_id = %s AND ea.aspect = %s AND ea.model = %s
         """,
-        (a, b, TOPIC, settings.embedding_model),
+        (a, b, TOPIC, settings.active_embedding_model),
     ).fetchone()
     shared = conn.execute(
         """

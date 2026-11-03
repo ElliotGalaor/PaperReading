@@ -5,7 +5,8 @@ import logging
 import typer
 
 from . import db, pipeline, search
-from .ingest import arxiv, openalex
+from .config import settings
+from .ingest import arxiv, openalex, semantic_scholar
 
 app = typer.Typer(help="Recherche de papiers scientifiques similaires.", no_args_is_help=True)
 
@@ -15,16 +16,17 @@ def _setup(verbose: bool = typer.Option(False, "--verbose", "-v")) -> None:
     logging.basicConfig(level=logging.INFO if verbose else logging.WARNING, format="%(message)s")
 
 
-def _embedder():
-    from .embeddings import get_embedder
-
-    typer.echo("Chargement de SPECTER2...")
-    return get_embedder()
+def _ingest(papers, *, enrich: bool, embed: bool) -> None:
+    if embed and settings.embedding_source == "local":
+        typer.echo("Calcul des embeddings avec SPECTER2 (local)...")
+    with db.connect() as conn:
+        ids = pipeline.ingest(conn, papers, enrich=enrich, embed=embed)
+    typer.echo(f"{len(ids)} papiers enregistrés.")
 
 
 @app.command("init-db")
 def init_db() -> None:
-    """Crée l'extension pgvector et les tables."""
+    """Crée l'extension pgvector et les tables (sans risque sur une base existante)."""
     db.init_db()
     typer.echo("Base initialisée.")
 
@@ -34,14 +36,12 @@ def ingest_arxiv(
     query: str = typer.Argument(..., help='Ex. \'cat:cond-mat.supr-con AND abs:"pseudogap"\''),
     max_results: int = typer.Option(100, "--max"),
     enrich: bool = typer.Option(True, help="Récupérer les références via OpenAlex"),
-    embed: bool = typer.Option(True, help="Calculer les embeddings"),
+    embed: bool = typer.Option(True, help="Calculer ou télécharger les embeddings"),
 ) -> None:
     """Importe des papiers depuis arXiv."""
     papers = arxiv.search_arxiv(query, max_results)
     typer.echo(f"{len(papers)} papiers récupérés sur arXiv.")
-    with db.connect() as conn:
-        ids = pipeline.ingest(conn, papers, enrich=enrich, embedder=_embedder() if embed else None)
-    typer.echo(f"{len(ids)} papiers enregistrés.")
+    _ingest(papers, enrich=enrich, embed=embed)
 
 
 @app.command("ingest-openalex")
@@ -54,9 +54,25 @@ def ingest_openalex(
     """Importe des papiers depuis OpenAlex (références incluses)."""
     papers = openalex.search_openalex(search_query, max_results, filter)
     typer.echo(f"{len(papers)} papiers récupérés sur OpenAlex.")
-    with db.connect() as conn:
-        ids = pipeline.ingest(conn, papers, enrich=False, embedder=_embedder() if embed else None)
-    typer.echo(f"{len(ids)} papiers enregistrés.")
+    _ingest(papers, enrich=False, embed=embed)
+
+
+@app.command("ingest-s2")
+def ingest_s2(
+    search_query: str = typer.Argument(..., metavar="SEARCH"),
+    max_results: int = typer.Option(100, "--max", help="1000 au plus"),
+    year: str | None = typer.Option(None, help="Ex. '2018-' ou '2015-2020'"),
+    fields_of_study: str | None = typer.Option(
+        None, "--fields", help="Ex. 'Physics,Mathematics,Chemistry'"
+    ),
+    enrich: bool = typer.Option(True, help="Récupérer les références via OpenAlex"),
+    embed: bool = typer.Option(True),
+) -> None:
+    """Importe des papiers depuis Semantic Scholar (avec leurs vecteurs SPECTER2)."""
+    papers = semantic_scholar.search_s2(search_query, max_results, year, fields_of_study)
+    n_vec = sum(1 for p in papers if p.embedding)
+    typer.echo(f"{len(papers)} papiers récupérés sur Semantic Scholar ({n_vec} avec vecteur).")
+    _ingest(papers, enrich=enrich, embed=embed)
 
 
 @app.command()
@@ -69,10 +85,10 @@ def enrich() -> None:
 
 @app.command()
 def embed() -> None:
-    """Calcule les embeddings manquants."""
+    """Remplit les embeddings manquants (source : PAPERSIM_EMBEDDING_SOURCE)."""
     with db.connect() as conn:
-        n = pipeline.embed_missing(conn, _embedder())
-    typer.echo(f"{n} embeddings calculés.")
+        n = pipeline.compute_embeddings(conn)
+    typer.echo(f"{n} embeddings ajoutés ({settings.active_embedding_model}).")
 
 
 def _print_results(results: list[dict]) -> None:
@@ -97,7 +113,14 @@ def similar(paper_id: str, k: int = typer.Option(10, "-k")) -> None:
 @app.command("search")
 def search_cmd(query: str, k: int = typer.Option(10, "-k")) -> None:
     """Recherche par texte libre."""
-    embedder = _embedder()
+    embedder = None
+    if settings.embedding_source == "local":
+        from .embeddings import get_embedder
+
+        typer.echo("Chargement de SPECTER2...")
+        embedder = get_embedder()
+    else:
+        typer.echo("Mode s2 : recherche lexicale seulement (pas de modèle local pour la requête).")
     with db.connect() as conn:
         _print_results(search.search_text(conn, embedder, query, k=k))
 
