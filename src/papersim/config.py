@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -15,6 +16,11 @@ class Settings(BaseSettings):
     openalex_mailto: str | None = None
     openalex_api_key: str | None = None
     s2_api_key: str | None = None
+
+    # Cache des réponses arXiv (1 jour) et verrou partagé entre programmes.
+    cache_dir: Path = Path.home() / ".cache" / "papersim"
+    # Plafond de résultats par recherche arXiv (arXiv conseille d'affiner au-delà de 1000).
+    arxiv_max_results: int = 2000
 
     # "local" : SPECTER2 calculé sur cette machine (torch requis).
     # "s2"    : vecteurs SPECTER2 téléchargés depuis Semantic Scholar (pas de GPU).

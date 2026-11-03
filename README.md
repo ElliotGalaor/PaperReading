@@ -63,7 +63,7 @@ car leur compatibilité exacte n'est pas vérifiée. Changer de source demande d
 
 ```
 src/papersim/
-  ingest/arxiv.py     API arXiv (Atom), 1 requête / 3 s
+  ingest/arxiv.py     API arXiv (Atom), avec garde-fous (voir plus bas)
   ingest/openalex.py  API OpenAlex : abstracts, références (graphe de citations)
   ingest/semantic_scholar.py  API Semantic Scholar : métadonnées + vecteurs SPECTER2
   ids.py              normalisation arXiv / DOI / OpenAlex (déduplication)
@@ -87,6 +87,21 @@ Un papier déjà connu par l'un de ses identifiants est fusionné, pas dupliqué
   (via le DOI `10.48550/arXiv.<id>`) pour récupérer leurs références.
 - **Lexical** : plein texte PostgreSQL (`ts_rank`), proche de BM25 sans en être. Pour un vrai BM25,
   voir l'extension ParadeDB `pg_search`.
+
+### Garde-fous arXiv
+
+L'API arXiv est gratuite, mais ses conditions d'utilisation imposent au plus une requête toutes les
+3 secondes, sur une seule connexion, pour l'ensemble de vos machines. arXiv peut bloquer un accès
+qui ne les respecte pas. Le projet applique :
+
+- **une requête à la fois, 3 s d'écart minimum**, pour tout le programme (requêtes simultanées
+  de l'API web comprises) et entre programmes lancés en même temps sur la machine (verrou fichier
+  `arxiv.lock` dans `PAPERSIM_CACHE_DIR`) ;
+- **réessais limités** (3 au plus) sur 429 / 503, en respectant l'en-tête `Retry-After` ;
+- **plafond de résultats** : `PAPERSIM_ARXIV_MAX_RESULTS` (2000 par défaut, 30 000 au plus) ;
+- **cache d'une journée** : une requête identique n'est pas renvoyée le même jour.
+
+Le verrou ne coordonne pas plusieurs machines : n'interrogez arXiv que depuis une seule.
 
 ## Limites connues
 
