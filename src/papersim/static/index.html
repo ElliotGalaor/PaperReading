@@ -219,9 +219,16 @@
     }
   }
 
+  // Ouverte hors du serveur (file://, aperçu data:…), la page ne peut pas joindre l'API.
+  const OPENED_AS_FILE = !/^https?:$/.test(location.protocol);
+  const FILE_MODE_MESSAGE =
+    "Cette page est ouverte comme fichier, pas depuis le serveur : elle ne peut pas lancer de recherche. " +
+    "Lancez « papersim serve » dans un terminal, puis ouvrez http://127.0.0.1:8000.";
+
   async function search(file) {
     if (busy || !file) return;
     reset();
+    if (OPENED_AS_FILE) return showError(FILE_MODE_MESSAGE);
     if (file.size > 20 * 1024 * 1024) return showError("Fichier trop volumineux (20 Mo au plus).");
     setBusy(true, `Analyse de « ${file.name} »…`);
     const body = new FormData();
@@ -231,7 +238,10 @@
       const resp = await fetch("/search/file", { method: "POST", body });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) {
-        const detail = typeof data.detail === "string" ? data.detail : `Erreur ${resp.status}`;
+        let detail = typeof data.detail === "string" ? data.detail : `Erreur ${resp.status}`;
+        if (resp.status >= 500 && typeof data.detail !== "string") {
+          detail = `Erreur du serveur (${resp.status}). La base PostgreSQL est-elle lancée (docker compose up -d) ? Détails dans le terminal de « papersim serve ».`;
+        }
         throw new Error(detail);
       }
       showWarnings(data.warnings || []);
@@ -244,6 +254,8 @@
       input.value = "";
     }
   }
+
+  if (OPENED_AS_FILE) showError(FILE_MODE_MESSAGE);
 
   drop.addEventListener("click", () => !busy && input.click());
   drop.addEventListener("keydown", (e) => {

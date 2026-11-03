@@ -13,6 +13,8 @@ from psycopg.types.json import Jsonb
 from .config import settings
 from .models import Paper
 
+CONNECT_TIMEOUT = 3  # secondes, par adresse essayée : une base injoignable ne doit pas bloquer l'interface
+
 PAPER_COLUMNS = (
     "id, title, abstract, authors, year, venue, categories, doi, arxiv_id, openalex_id, s2_id, source"
 )
@@ -21,7 +23,9 @@ PAPER_COLUMNS = (
 @contextmanager
 def connect(url: str | None = None, *, register: bool = True) -> Iterator[psycopg.Connection]:
     """Connexion avec commit automatique en sortie de bloc (rollback si exception)."""
-    with psycopg.connect(url or settings.database_url, row_factory=dict_row) as conn:
+    with psycopg.connect(
+        url or settings.database_url, row_factory=dict_row, connect_timeout=CONNECT_TIMEOUT
+    ) as conn:
         if register:
             register_vector(conn)
         yield conn
