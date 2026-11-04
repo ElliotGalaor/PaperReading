@@ -35,7 +35,13 @@ papersim serve                 # interface sur http://127.0.0.1:8000, API sur /d
 
 ### Interface web
 
-Ouvrez http://127.0.0.1:8000 et glissez un article (PDF, `.txt` ou `.md`, 20 Mo au plus) :
+La page s'ouvre sur l'onglet **Bibliothèque** : les papiers de la base, 25 par page, avec une
+recherche (titre, résumé ou auteur), un filtre par thème et un tri (plus récents, plus anciens,
+titre, derniers importés). Le bouton **Papiers similaires** d'un papier lance la recherche de ses
+voisins dans l'onglet Recherche, sans déposer de fichier. Adresses directes : `/` (Bibliothèque),
+`/#recherche`, `/#favoris`.
+
+Dans l'onglet **Recherche**, glissez un article (PDF, `.txt` ou `.md`, 20 Mo au plus) :
 
 - si la première page porte un identifiant arXiv ou un DOI, et que le titre retrouvé en ligne
   correspond au fichier, le papier est **ajouté au corpus** et comparé avec tous les signaux
@@ -57,6 +63,13 @@ des homonymes peuvent apparaître. « et N autres » déplie la liste complète 
 
 Les **formules LaTeX** des titres et résumés (`$T_c$`, `$H$-$φ$`…) sont mises en forme avec
 KaTeX, chargé depuis un CDN (jsDelivr) : sans connexion Internet, le texte brut reste affiché.
+
+**Favoris** : l'étoile ☆ à côté d'un papier (résultats, papier reconnu, pages de classement)
+l'enregistre ; ★ le retire. L'onglet **Favoris** (ou l'adresse `/#favoris`) liste les papiers
+enregistrés, du plus récent au plus ancien, avec leur date d'ajout. Les favoris sont stockés dans
+la base PostgreSQL (table `favorites`, créée automatiquement au démarrage du serveur) : ils ne
+dépendent pas du navigateur. Un papier saisi en texte libre, non reconnu, n'est pas dans le
+corpus et ne peut donc pas être mis en favori.
 
 Une fois les résultats affichés :
 
@@ -97,12 +110,17 @@ car leur compatibilité exacte n'est pas vérifiée. Changer de source demande d
 | Méthode | Route | Rôle |
 |---|---|---|
 | `POST` | `/papers` | `{"arxiv_ids": [...], "dois": [...]}` : import + indexation |
+| `GET` | `/papers?q=&category=&sort=&page=&per_page=` | Parcours paginé du corpus (Bibliothèque) |
 | `GET` | `/papers/{id}` | Fiche d'un papier |
 | `GET` | `/papers/{id}/similar?k=10&year_min=&year_max=` | Papiers similaires, avec rang par signal |
 | `GET` | `/search?q=...&year_min=&year_max=` | Recherche en texte libre |
 | `POST` | `/search/text` | `{"query", "k", "year_min", "year_max"}` : idem pour un texte long |
 | `GET` | `/papers/{id}/ranking/{signal}?k=15` | Classement d'un seul signal (`semantic`, `lexical`, `citations`) |
 | `POST` | `/search/text/ranking` | `{"query", "signal", "k", "year_min", "year_max"}` : idem pour un texte |
+| `GET` | `/favorites` | Papiers en favoris (plus récent d'abord) |
+| `PUT` | `/favorites/{id}` | Ajoute un favori |
+| `DELETE` | `/favorites/{id}` | Retire un favori |
+| `GET` | `/corpus/categories` | Thèmes présents dans le corpus, avec leur nombre de papiers |
 | `GET` | `/corpus/years` | Années extrêmes du corpus |
 | `POST` | `/search/file` | Fichier en `multipart/form-data` (`file`, `k`, `year_min`, `year_max`) |
 | `GET` | `/` | Interface web |
@@ -127,6 +145,7 @@ src/papersim/
   static/ranking.html page du classement d'un seul signal
   static/authors.js   liens des auteurs vers leur bibliographie (partagé par les deux pages)
   static/math.js      rendu des formules LaTeX avec KaTeX (partagé par les deux pages)
+  static/favorites.js boutons étoile des favoris (partagé par les deux pages)
   search.py           signaux semantic / lexical / citations + fusion RRF
   api.py, cli.py      FastAPI et ligne de commande
 ```

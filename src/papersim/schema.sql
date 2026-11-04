@@ -46,3 +46,9 @@ CREATE TABLE IF NOT EXISTS paper_references (
     PRIMARY KEY (paper_id, ref_openalex_id)
 );
 CREATE INDEX IF NOT EXISTS paper_references_ref_idx ON paper_references (ref_openalex_id);
+
+-- Papiers mis en favoris depuis l'interface.
+CREATE TABLE IF NOT EXISTS favorites (
+    paper_id   TEXT PRIMARY KEY REFERENCES papers (id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

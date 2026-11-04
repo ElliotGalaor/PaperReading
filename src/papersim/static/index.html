@@ -21,6 +21,7 @@
     --warn-text: #7a5a10;
     --error-bg: #fbe7e5;
     --error-text: #8f2a20;
+    --star: #b7860b;
     --radius: 12px;
   }
   @media (prefers-color-scheme: dark) {
@@ -36,6 +37,7 @@
       --warn-text: #f0d48a;
       --error-bg: #3d2220;
       --error-text: #f4aaa2;
+      --star: #f2c14e;
     }
   }
   * { box-sizing: border-box; }
@@ -49,6 +51,46 @@
   main { max-width: 860px; margin: 0 auto; padding: 40px 16px 64px; }
   header h1 { margin: 0; font-size: 1.8rem; letter-spacing: -0.01em; }
   header p { margin: 4px 0 28px; color: var(--muted); }
+
+  /* Onglets Recherche / Favoris */
+  .tabbar {
+    display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 16px;
+    margin: 0 0 22px; border-bottom: 1px solid var(--border);
+  }
+  /* Sur écran étroit, la rangée d'onglets défile horizontalement au lieu d'élargir la page. */
+  .tabs { display: flex; gap: 4px; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    font: inherit; font-weight: 600; color: var(--muted); background: none; cursor: pointer; white-space: nowrap;
+    border: 0; border-bottom: 2px solid transparent; padding: 8px 12px; margin-bottom: -1px;
+  }
+  @media (max-width: 420px) { .tab { padding: 8px 7px; } .count { margin-left: 3px; padding: 0 5px; } }
+  .tab:hover { color: var(--text); }
+  .tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+  .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 6px 6px 0 0; }
+  .count {
+    display: inline-block; min-width: 1.6em; margin-left: 4px; padding: 0 6px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent); font-size: .78rem; text-align: center;
+  }
+  .view-picker { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: .85rem; color: var(--muted); }
+  .library-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .library-tools input[type="search"] {
+    flex: 1 1 220px; min-width: 0; font: inherit; color: var(--text); background: var(--surface);
+    border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px;
+  }
+  .library-tools select { flex: 0 1 auto; max-width: 100%; }
+  .library-tools input:focus-visible, .library-tools select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 18px; color: var(--muted); font-size: .9rem; }
+  .pager button {
+    font: inherit; color: var(--accent); background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 5px 12px; cursor: pointer;
+  }
+  .pager button:disabled { color: var(--muted); cursor: default; opacity: .6; }
+  .pager button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .card-actions { margin-top: 8px; font-size: .86rem; }
+  .panel-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; margin: 0 0 12px; }
+  .panel-head h2 { margin: 0; font-size: 1.1rem; }
+  .panel-head p { margin: 0; color: var(--muted); font-size: .88rem; }
 
   .drop {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -92,7 +134,7 @@
   /* --- Barre de contrôle des résultats ------------------------------------- */
   h3.results-title { margin: 32px 0 12px; font-size: 1rem; }
   .controls {
-    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px 28px; align-items: end;
+    display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px 28px; align-items: end;
     padding: 14px 16px; margin-bottom: 14px;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   }
@@ -141,7 +183,20 @@
   /* --- Résultats ----------------------------------------------------------- */
   ol.results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
   .results.dim { opacity: .5; transition: opacity .15s; }
-  .result { display: grid; grid-template-columns: 2.2em minmax(0, 1fr); gap: 4px 10px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  .result { display: grid; grid-template-columns: 2.2em minmax(0, 1fr) auto; gap: 4px 10px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  .result.no-rank { grid-template-columns: minmax(0, 1fr) auto; }
+  .added { color: var(--muted); font-size: .8rem; margin-top: 6px; }
+  /* Étoile des favoris */
+  .fav {
+    width: 2rem; height: 2rem; margin: -5px -8px 0 0; padding: 0; border: 0; border-radius: 8px;
+    background: none; color: var(--muted); font-size: 1.3rem; line-height: 1; cursor: pointer; align-self: start;
+  }
+  .fav:hover { background: var(--accent-soft); color: var(--star); }
+  .fav[aria-pressed="true"] { color: var(--star); }
+  .fav:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .fav:disabled { opacity: .5; cursor: progress; }
+  .query-head { display: flex; align-items: flex-start; gap: 10px; }
+  .query-head > div { flex: 1; min-width: 0; }
   .results[data-view="compact"] .result { padding: 10px 16px; }
   .rank { color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 1px; }
   .result .title { color: var(--text); font-weight: 600; text-decoration: none; }
@@ -150,8 +205,8 @@
   .author { color: inherit; text-decoration: none; }
   .author:hover { color: var(--accent); text-decoration: underline; }
   .author:focus-visible, .more-authors:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 2px; }
-  .more-authors { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; }
-  .more-authors:hover { text-decoration: underline; }
+  .more-authors { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  .more-authors:hover { color: var(--accent); text-decoration: underline; }
   .signals { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .chip { font-size: .78rem; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
   a.chip { text-decoration: none; }
@@ -171,9 +226,50 @@
 <main>
   <header>
     <h1>PaperReading</h1>
-    <p>Déposez un article pour trouver les papiers les plus proches du corpus.</p>
+    <p>Parcourez votre bibliothèque de papiers, ou déposez un article pour trouver les plus proches.</p>
   </header>
 
+  <div class="tabbar">
+    <div class="tabs" role="tablist" aria-label="Sections">
+      <button class="tab" role="tab" id="tab-library" aria-controls="panel-library" aria-selected="true" type="button">Bibliothèque<span class="count" id="lib-count" hidden></span></button>
+      <button class="tab" role="tab" id="tab-search" aria-controls="panel-search" aria-selected="false" tabindex="-1" type="button">Recherche</button>
+      <button class="tab" role="tab" id="tab-favs" aria-controls="panel-favs" aria-selected="false" tabindex="-1" type="button">Favoris<span class="count" id="fav-count" hidden></span></button>
+    </div>
+    <div class="view-picker" role="radiogroup" aria-labelledby="view-label">
+      <span id="view-label">Affichage</span>
+      <div class="segmented">
+        <input type="radio" name="view" id="view-compact" value="compact">
+        <label for="view-compact" title="Titre et auteurs">Small</label>
+        <input type="radio" name="view" id="view-infos" value="infos" checked>
+        <label for="view-infos" title="Titre, auteurs, année, revue et signaux">Medium</label>
+        <input type="radio" name="view" id="view-abstract" value="abstract">
+        <label for="view-abstract" title="Titre, informations et résumé">Large</label>
+      </div>
+    </div>
+  </div>
+
+  <section id="panel-library" role="tabpanel" aria-labelledby="tab-library">
+    <div class="library-tools" role="search">
+      <input type="search" id="lib-q" placeholder="Titre, résumé ou auteur…" aria-label="Rechercher dans la bibliothèque" autocomplete="off">
+      <select id="lib-cat" aria-label="Thème"><option value="">Tous les thèmes</option></select>
+      <select id="lib-sort" aria-label="Tri">
+        <option value="recent">Plus récents</option>
+        <option value="oldest">Plus anciens</option>
+        <option value="title">Titre (A → Z)</option>
+        <option value="added">Derniers importés</option>
+      </select>
+    </div>
+    <div class="panel-head"><h2 id="lib-title" aria-live="polite">Bibliothèque</h2></div>
+    <div id="lib-error" class="notice error" role="alert" hidden></div>
+    <ol id="library" class="results"></ol>
+    <nav class="pager" id="lib-pager" aria-label="Pages de la bibliothèque" hidden>
+      <button id="lib-prev" type="button">← Précédent</button>
+      <span id="lib-page"></span>
+      <button id="lib-next" type="button">Suivant →</button>
+    </nav>
+  </section>
+
+  <section id="panel-search" role="tabpanel" aria-labelledby="tab-search" hidden>
   <div id="drop" class="drop" role="button" tabindex="0" aria-describedby="drop-hint">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
       <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 17v-6"/><path d="m9.5 13.5 2.5-2.5 2.5 2.5"/>
@@ -210,26 +306,25 @@
         </div>
         <div class="range-ends"><span id="range-lo"></span><span id="range-hi"></span></div>
       </div>
-
-      <div role="radiogroup" aria-labelledby="view-label">
-        <div class="control-label"><span id="view-label">Affichage</span></div>
-        <div class="segmented">
-          <input type="radio" name="view" id="view-compact" value="compact">
-          <label for="view-compact" title="Titre et auteurs">Small</label>
-          <input type="radio" name="view" id="view-infos" value="infos" checked>
-          <label for="view-infos" title="Titre, auteurs, année, revue et signaux">Medium</label>
-          <input type="radio" name="view" id="view-abstract" value="abstract">
-          <label for="view-abstract" title="Titre, informations et résumé">Large</label>
-        </div>
-      </div>
     </div>
 
     <ol id="results" class="results"></ol>
+  </section>
+  </section>
+
+  <section id="panel-favs" role="tabpanel" aria-labelledby="tab-favs" hidden>
+    <div class="panel-head">
+      <h2 id="favs-title">Favoris</h2>
+      <p>Cliquez sur ★ pour retirer un papier.</p>
+    </div>
+    <div id="favs-error" class="notice error" role="alert" hidden></div>
+    <ol id="favs" class="results"></ol>
   </section>
 </main>
 
 <script src="/static/authors.js"></script>
 <script src="/static/math.js"></script>
+<script src="/static/favorites.js"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -293,9 +388,14 @@
       const p = data.paper, url = paperLink(p);
       const title = url ? el("a", { href: url, target: "_blank", rel: "noopener", textContent: p.title, className: "linklike" }) : p.title;
       box.replaceChildren(
-        el("div", { className: "label", textContent: "Papier reconnu" }),
-        el("h2", {}, title),
-        PaperAuthors.metaNode(p),
+        el("div", { className: "query-head" },
+          el("div", {},
+            el("div", { className: "label", textContent: data.label || "Papier reconnu" }),
+            el("h2", {}, title),
+            PaperAuthors.metaNode(p),
+          ),
+          PaperFavorites.button(p),
+        ),
       );
     } else {
       const ex = data.extracted || {};
@@ -355,6 +455,8 @@
       if (!resp.ok) return;
       const c = await resp.json();
       setCorpusBounds(c.min == null ? null : { min: c.min, max: c.max });
+      $("lib-count").textContent = c.papers;
+      $("lib-count").hidden = !c.papers;
     } catch { /* le filtre est facultatif */ }
   }
 
@@ -472,27 +574,19 @@
     return el("div", {}, text, toggle);
   }
 
-  function renderResults() {
-    const list = $("results"), view = currentView();
-    list.dataset.view = view;
-    if (!lastResults.length) {
-      const message = lastPeriod
-        ? `Aucun papier similaire publié ${lastPeriod}. Élargissez la période.`
-        : "Aucun papier similaire dans le corpus. Importez d'abord des papiers (papersim ingest-arxiv …).";
-      list.replaceChildren(el("p", { className: "empty", textContent: message }));
-      return;
-    }
-    list.replaceChildren(...lastResults.map((r, i) => {
-      const p = r.paper, url = paperLink(p);
-      const title = url
-        ? el("a", { className: "title", href: url, target: "_blank", rel: "noopener", textContent: p.title })
-        : el("span", { className: "title", textContent: p.title });
-      const body = el("div", {}, title);
-      if (view === "compact") {
-        body.append(PaperAuthors.metaNode(p, false));
-      } else {
-        body.append(PaperAuthors.metaNode(p));
-        const chips = Object.entries(r.signals || {}).map(([name, s]) => {
+  // Carte d'un papier : résultat (rang + signaux) ou favori (date d'ajout).
+  function renderCard(p, { view, rank = null, signals = null, addedAt = null, actions = [] }) {
+    const url = paperLink(p);
+    const title = url
+      ? el("a", { className: "title", href: url, target: "_blank", rel: "noopener", textContent: p.title })
+      : el("span", { className: "title", textContent: p.title });
+    const body = el("div", {}, title);
+    if (view === "compact") {
+      body.append(PaperAuthors.metaNode(p, false));
+    } else {
+      body.append(PaperAuthors.metaNode(p));
+      if (signals) {
+        const chips = Object.entries(signals).map(([name, s]) => {
           const [label, help] = SIGNALS[name] || [name, ""];
           const text = `${label} #${s.rank}`;
           if (RANKABLE.has(name) && lastQuery) {
@@ -504,11 +598,162 @@
           return el("span", { className: "chip", title: help, textContent: text });
         });
         body.append(el("div", { className: "signals" }, ...chips));
-        if (view === "abstract") body.append(renderAbstract(p));
       }
-      return el("li", { className: "result" }, el("span", { className: "rank", textContent: i + 1 }), body);
-    }));
+      if (view === "abstract") body.append(renderAbstract(p));
+    }
+    if (addedAt) {
+      const date = new Date(addedAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+      body.append(el("div", { className: "added", textContent: `Ajouté le ${date}` }));
+    }
+    if (actions.length) body.append(el("div", { className: "card-actions" }, ...actions));
+    const li = el("li", { className: "result" + (rank === null ? " no-rank" : "") });
+    if (rank !== null) li.append(el("span", { className: "rank", textContent: rank }));
+    li.append(body, PaperFavorites.button(p));
+    return li;
+  }
+
+  function renderResults() {
+    const list = $("results"), view = currentView();
+    list.dataset.view = view;
+    if (!lastResults.length) {
+      const message = lastPeriod
+        ? `Aucun papier similaire publié ${lastPeriod}. Élargissez la période.`
+        : "Aucun papier similaire dans le corpus. Importez d'abord des papiers (papersim ingest-arxiv …).";
+      list.replaceChildren(el("p", { className: "empty", textContent: message }));
+      return;
+    }
+    list.replaceChildren(...lastResults.map((r, i) => renderCard(r.paper, { view, rank: i + 1, signals: r.signals || {} })));
     PaperMath.render(list);
+  }
+
+  // --- Favoris ------------------------------------------------------------------------------
+
+  let favList = [];  // [{ paper, added_at }] du plus récent au plus ancien
+
+  function updateFavCount() {
+    const n = PaperFavorites.count();
+    $("fav-count").textContent = n;
+    $("fav-count").hidden = n === 0;
+  }
+
+  function renderFavorites() {
+    const list = $("favs"), view = currentView();
+    list.dataset.view = view;
+    $("favs-title").textContent = favList.length
+      ? `${favList.length} papier${favList.length > 1 ? "s" : ""} en favoris`
+      : "Favoris";
+    if (!favList.length) {
+      list.replaceChildren(el("p", { className: "empty", textContent: "Aucun favori pour l'instant. Cliquez sur ☆ à côté d'un résultat pour l'enregistrer ici." }));
+      return;
+    }
+    list.replaceChildren(...favList.map((f) => renderCard(f.paper, { view, addedAt: f.added_at })));
+    PaperMath.render(list);
+  }
+
+  async function loadFavorites() {
+    $("favs-error").hidden = true;
+    favList = await PaperFavorites.load();
+    renderFavorites();
+  }
+
+  // --- Bibliothèque ----------------------------------------------------------------------------
+
+  const LIB_PER_PAGE = 25;
+  const lib = { q: "", category: "", sort: "recent", page: 1, total: 0, papers: [] };
+  let libRequest = 0;  // ignore les réponses d'une requête dépassée par une plus récente
+
+  function similarButton(p) {
+    const b = el("button", { type: "button", className: "btn-link", textContent: "Papiers similaires →" });
+    b.title = "Chercher les papiers les plus proches de celui-ci";
+    b.addEventListener("click", () => similarTo(p));
+    return b;
+  }
+
+  function renderLibrary() {
+    const list = $("library"), view = currentView();
+    list.dataset.view = view;
+    const filtered = lib.q || lib.category;
+    $("lib-title").textContent = lib.total
+      ? `${lib.total} papier${lib.total > 1 ? "s" : ""}${filtered ? " trouvé" + (lib.total > 1 ? "s" : "") : ""}`
+      : "Bibliothèque";
+    if (!lib.papers.length) {
+      list.replaceChildren(el("p", {
+        className: "empty",
+        textContent: filtered
+          ? "Aucun papier ne correspond. Essayez d'autres mots ou un autre thème."
+          : "La bibliothèque est vide. Importez des papiers (papersim ingest-arxiv …) ou déposez un article dans l'onglet Recherche.",
+      }));
+    } else {
+      list.replaceChildren(...lib.papers.map((p) => renderCard(p, { view, actions: [similarButton(p)] })));
+      PaperMath.render(list);
+    }
+    const pages = Math.max(1, Math.ceil(lib.total / LIB_PER_PAGE));
+    $("lib-pager").hidden = pages <= 1;
+    $("lib-page").textContent = `Page ${lib.page} sur ${pages}`;
+    $("lib-prev").disabled = lib.page <= 1;
+    $("lib-next").disabled = lib.page >= pages;
+  }
+
+  async function loadLibrary() {
+    const id = ++libRequest;
+    const params = new URLSearchParams({ sort: lib.sort, page: lib.page, per_page: LIB_PER_PAGE });
+    if (lib.q) params.set("q", lib.q);
+    if (lib.category) params.set("category", lib.category);
+    $("library").classList.add("dim");
+    try {
+      const data = await postJSON(`/papers?${params}`);
+      if (id !== libRequest) return;
+      $("lib-error").hidden = true;
+      lib.total = data.total;
+      lib.papers = data.papers;
+      renderLibrary();
+    } catch (err) {
+      if (id !== libRequest) return;
+      $("lib-error").textContent = networkMessage(err);
+      $("lib-error").hidden = false;
+    } finally {
+      if (id === libRequest) $("library").classList.remove("dim");
+    }
+  }
+
+  async function loadCategories() {
+    try {
+      const data = await postJSON("/corpus/categories");
+      const select = $("lib-cat");
+      select.replaceChildren(el("option", { value: "", textContent: "Tous les thèmes" }),
+        ...data.categories.map((c) => el("option", { value: c.code, textContent: `${c.name} (${c.count})` })));
+      select.value = lib.category;
+    } catch { /* filtre facultatif */ }
+  }
+
+  // Lance la recherche de papiers similaires à un papier du corpus, dans l'onglet Recherche.
+  async function similarTo(p) {
+    selectTab("search");
+    reset();
+    lastQuery = { mode: "paper", paperId: p.id };
+    showQuery({ mode: "paper", paper: p, label: "Papier de départ" });
+    $("query").scrollIntoView({ block: "start" });
+    await refilter();
+  }
+
+  // --- Onglets --------------------------------------------------------------------------------
+
+  const TABS = { library: $("tab-library"), search: $("tab-search"), favs: $("tab-favs") };
+  const TAB_HASH = { library: "", search: "#recherche", favs: "#favoris" };
+  let activeTab = "library";
+
+  function selectTab(name, focus = false) {
+    activeTab = name;
+    for (const [key, tab] of Object.entries(TABS)) {
+      const on = key === name;
+      tab.setAttribute("aria-selected", String(on));
+      tab.tabIndex = on ? 0 : -1;
+      $(tab.getAttribute("aria-controls")).hidden = !on;
+    }
+    if (focus) TABS[name].focus();
+    history.replaceState(null, "", TAB_HASH[name] || location.pathname + location.search);
+    if (name === "favs") loadFavorites();
+    if (name === "library") loadLibrary();  // à jour après un import depuis l'onglet Recherche
   }
 
   // Lien vers la page /ranking ; les paramètres sont dans le fragment (#), qui ne part pas au serveur.
@@ -598,8 +843,61 @@
   for (const radio of document.querySelectorAll('input[name="view"]')) {
     radio.addEventListener("change", () => {
       try { localStorage.setItem(VIEW_KEY, radio.value); } catch { /* ignoré */ }
-      renderResults();
+      if (lastQuery || lastResults.length) renderResults();
+      renderFavorites();
+      renderLibrary();
     });
+  }
+
+  // Onglets : clic, flèches gauche/droite, Début/Fin.
+  const tabOrder = Object.keys(TABS);
+  for (const [name, tab] of Object.entries(TABS)) {
+    tab.addEventListener("click", () => selectTab(name));
+    tab.addEventListener("keydown", (e) => {
+      const i = tabOrder.indexOf(name);
+      const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabOrder.length - 1 }[e.key];
+      if (next === undefined) return;
+      e.preventDefault();
+      selectTab(tabOrder[(next + tabOrder.length) % tabOrder.length], true);
+    });
+  }
+
+  PaperFavorites.onChange(() => {
+    updateFavCount();
+    if (activeTab === "favs") {  // un favori retiré disparaît de la liste
+      favList = favList.filter((f) => PaperFavorites.has(f.paper.id));
+      renderFavorites();
+    }
+  });
+  window.addEventListener("paperfavorites:error", (e) => {
+    const box = activeTab === "favs" ? $("favs-error") : $("error");
+    box.textContent = e.detail;
+    box.hidden = false;
+  });
+  // Bibliothèque : recherche (saisie temporisée), thème, tri, pages.
+  let libTimer;
+  $("lib-q").addEventListener("input", () => {
+    clearTimeout(libTimer);
+    libTimer = setTimeout(() => { lib.q = $("lib-q").value.trim(); lib.page = 1; loadLibrary(); }, 300);
+  });
+  $("lib-cat").addEventListener("change", () => { lib.category = $("lib-cat").value; lib.page = 1; loadLibrary(); });
+  $("lib-sort").addEventListener("change", () => { lib.sort = $("lib-sort").value; lib.page = 1; loadLibrary(); });
+  for (const [id, step] of [["lib-prev", -1], ["lib-next", 1]]) {
+    $(id).addEventListener("click", () => {
+      lib.page += step;
+      loadLibrary();
+      $("panel-library").scrollIntoView({ block: "start" });
+    });
+  }
+
+  if (OPENED_AS_FILE) {  // l'onglet ouvert par défaut doit aussi afficher l'explication
+    $("lib-error").textContent = FILE_MODE_MESSAGE;
+    $("lib-error").hidden = false;
+  } else {
+    PaperFavorites.load();
+    loadCategories();
+    const initial = Object.keys(TAB_HASH).find((k) => TAB_HASH[k] && TAB_HASH[k] === location.hash) || "library";
+    selectTab(initial);
   }
   $("k").addEventListener("change", refilter);
 

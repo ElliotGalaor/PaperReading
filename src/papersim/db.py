@@ -185,3 +185,109 @@ def get_embedding(
         (paper_id, aspect, model),
     ).fetchone()
     return row["embedding"] if row else None
+
+
+# --- Favoris ----------------------------------------------------------------------------
+
+
+def add_favorite(conn: psycopg.Connection, paper_id: str) -> None:
+    """Ajoute un favori (sans effet s'il existe déjà) ; KeyError si le papier est inconnu."""
+    try:
+        with conn.transaction():
+            conn.execute(
+                "INSERT INTO favorites (paper_id) VALUES (%s) ON CONFLICT DO NOTHING", (paper_id,)
+            )
+    except psycopg.errors.ForeignKeyViolation:
+        raise KeyError(paper_id) from None
+
+
+def remove_favorite(conn: psycopg.Connection, paper_id: str) -> bool:
+    cur = conn.execute("DELETE FROM favorites WHERE paper_id = %s", (paper_id,))
+    return cur.rowcount > 0
+
+
+def list_favorites(conn: psycopg.Connection) -> list[dict]:
+    """Favoris du plus récent au plus ancien, avec la fiche du papier."""
+    columns = ", ".join(f"p.{c.strip()}" for c in PAPER_COLUMNS.split(","))
+    rows = conn.execute(
+        f"""
+        SELECT {columns}, f.created_at AS favorited_at
+        FROM favorites f JOIN papers p ON p.id = f.paper_id
+        ORDER BY f.created_at DESC
+        """
+    ).fetchall()
+    return [{"paper": {k: v for k, v in r.items() if k != "favorited_at"}, "added_at": r["favorited_at"]} for r in rows]
+
+
+# --- Bibliothèque : parcours du corpus ------------------------------------------------------
+
+# Tris autorisés (jamais de texte venant de l'utilisateur dans le ORDER BY).
+LIBRARY_SORTS = {
+    "recent": "p.year DESC NULLS LAST, p.created_at DESC, p.id",
+    "oldest": "p.year ASC NULLS LAST, p.created_at ASC, p.id",
+    # Titre sans les caractères LaTeX ($, \, {, }) : « $d$-wave » se range à « d ».
+    "title": r"lower(regexp_replace(p.title, '[$\\{}]', '', 'g')) ASC, p.id",
+    "added": "p.created_at DESC, p.id",
+}
+
+
+def list_papers(
+    conn: psycopg.Connection, *, query: str | None = None, category: str | None = None,
+    sort: str = "recent", limit: int = 25, offset: int = 0,
+) -> tuple[int, list[dict]]:
+    """Une page du corpus, filtrée et triée ; renvoie (nombre total, papiers de la page).
+
+    `query` cherche dans le titre et le résumé (plein texte, tolère les pluriels) ainsi
+    que dans les noms d'auteurs (sous-chaîne, insensible à la casse).
+    """
+    order = LIBRARY_SORTS.get(sort)
+    if order is None:
+        raise ValueError(f"Tri inconnu : {sort}")
+    columns = ", ".join(f"p.{c.strip()}" for c in PAPER_COLUMNS.split(","))
+    q = (query or "").strip() or None
+    rows = conn.execute(
+        f"""
+        SELECT {columns}, count(*) OVER () AS total
+        FROM papers p
+        WHERE (%(q)s::text IS NULL
+               OR p.tsv @@ websearch_to_tsquery('english', %(q)s)
+               OR p.title ILIKE '%%' || %(q)s || '%%'
+               OR p.authors::text ILIKE '%%' || %(q)s || '%%')
+          AND (%(cat)s::text IS NULL OR %(cat)s = ANY (p.categories))
+        ORDER BY {order}
+        LIMIT %(limit)s OFFSET %(offset)s
+        """,
+        {"q": q, "cat": category or None, "limit": limit, "offset": offset},
+    ).fetchall()
+    total = rows[0]["total"] if rows else _count_papers(conn, q, category)
+    return total, [{k: v for k, v in r.items() if k != "total"} for r in rows]
+
+
+def _count_papers(conn: psycopg.Connection, q: str | None, category: str | None) -> int:
+    """Total quand la page demandée est vide (ex. page au-delà de la dernière)."""
+    row = conn.execute(
+        """
+        SELECT count(*) AS n FROM papers p
+        WHERE (%(q)s::text IS NULL
+               OR p.tsv @@ websearch_to_tsquery('english', %(q)s)
+               OR p.title ILIKE '%%' || %(q)s || '%%'
+               OR p.authors::text ILIKE '%%' || %(q)s || '%%')
+          AND (%(cat)s::text IS NULL OR %(cat)s = ANY (p.categories))
+        """,
+        {"q": q, "cat": category or None},
+    ).fetchone()
+    return row["n"]
+
+
+def corpus_categories(conn: psycopg.Connection, limit: int = 60) -> list[dict]:
+    """Catégories présentes dans le corpus, de la plus à la moins fréquente."""
+    rows = conn.execute(
+        """
+        SELECT c AS code, count(*) AS n
+        FROM papers, unnest(categories) AS c
+        GROUP BY c ORDER BY n DESC, c
+        LIMIT %s
+        """,
+        (limit,),
+    ).fetchall()
+    return [{"code": r["code"], "count": r["n"]} for r in rows]

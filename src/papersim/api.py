@@ -4,7 +4,9 @@ Les identifiants peuvent contenir des « / » (anciens identifiants arXiv comme
 arxiv:hep-th/9901001), d'où le convertisseur {paper_id:path}.
 """
 
-from collections.abc import Iterator
+import logging
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager
 from importlib.resources import files
 from typing import Literal
 
@@ -14,13 +16,28 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import db, extract, filesearch, pipeline, search
+from . import db, extract, filesearch, keywords, pipeline, search
 from .config import settings
 from .embeddings import get_embedder
 from .ids import normalize_doi
 from .ingest import arxiv, openalex
 
-app = FastAPI(title="papersim", version="0.1.0")
+log = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # Met le schéma à jour au démarrage (instructions idempotentes : nouvelles tables
+    # comme « favorites » créées sans relancer papersim init-db). Base injoignable :
+    # le serveur démarre quand même, les pages afficheront l'erreur.
+    try:
+        db.init_db()
+    except Exception as e:  # noqa: BLE001
+        log.warning("Schéma non vérifié au démarrage (base injoignable ?) : %s", e)
+    yield
+
+
+app = FastAPI(title="papersim", version="0.1.0", lifespan=lifespan)
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
@@ -81,6 +98,22 @@ def add_papers(req: IngestRequest, conn: psycopg.Connection = Depends(get_conn))
                 papers.append(work)
     ids = pipeline.ingest(conn, papers)
     return {"ingested": ids}
+
+
+@app.get("/papers")
+def browse_papers(
+    q: str | None = Query(None, max_length=200, description="Titre, résumé ou auteur"),
+    category: str | None = Query(None, max_length=50, description="Catégorie, ex. cond-mat.supr-con"),
+    sort: Literal["recent", "oldest", "title", "added"] = "recent",
+    page: int = Query(1, ge=1, le=10_000),
+    per_page: int = Query(25, ge=1, le=100),
+    conn: psycopg.Connection = Depends(get_conn),
+) -> dict:
+    """Parcours paginé du corpus (onglet Bibliothèque)."""
+    total, papers = db.list_papers(
+        conn, query=q, category=category, sort=sort, limit=per_page, offset=(page - 1) * per_page
+    )
+    return {"total": total, "page": page, "per_page": per_page, "papers": papers}
 
 
 @app.get("/papers/{paper_id:path}/similar")
@@ -162,6 +195,37 @@ def text_ranking(req: SignalRankingRequest, conn: psycopg.Connection = Depends(g
     except ValueError as e:
         raise HTTPException(422, str(e))
     return {"signal": req.signal, "query": {"mode": "text"}, "results": search.ranking_details(conn, ranking)}
+
+
+@app.get("/favorites")
+def list_favorites(conn: psycopg.Connection = Depends(get_conn)) -> dict:
+    """Papiers enregistrés en favoris, du plus récent au plus ancien."""
+    return {"favorites": db.list_favorites(conn)}
+
+
+@app.put("/favorites/{paper_id:path}")
+def add_favorite(paper_id: str, conn: psycopg.Connection = Depends(get_conn)) -> dict:
+    try:
+        db.add_favorite(conn, paper_id)
+    except KeyError:
+        raise HTTPException(404, f"Papier inconnu : {paper_id}")
+    return {"paper_id": paper_id, "favorite": True}
+
+
+@app.delete("/favorites/{paper_id:path}")
+def remove_favorite(paper_id: str, conn: psycopg.Connection = Depends(get_conn)) -> dict:
+    db.remove_favorite(conn, paper_id)
+    return {"paper_id": paper_id, "favorite": False}
+
+
+@app.get("/corpus/categories")
+def corpus_categories(conn: psycopg.Connection = Depends(get_conn)) -> dict:
+    """Thèmes présents dans le corpus avec leur nombre de papiers (filtre de la bibliothèque)."""
+    return {
+        "categories": [
+            {**c, "name": keywords.theme_name(c["code"])} for c in db.corpus_categories(conn)
+        ]
+    }
 
 
 @app.get("/corpus/years")
