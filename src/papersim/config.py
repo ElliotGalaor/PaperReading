@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     openalex_api_key: str | None = None
     s2_api_key: str | None = None
 
+    # Comptes : inscription libre depuis la page de connexion (False : seulement
+    # « papersim create-user »), durée de session, cookie réservé à HTTPS.
+    allow_signup: bool = True
+    session_days: int = 30
+    cookie_secure: bool = False
+
     # Cache des réponses arXiv (1 jour) et verrou partagé entre programmes.
     cache_dir: Path = Path.home() / ".cache" / "papersim"
     # Plafond de résultats par recherche arXiv (arXiv conseille d'affiner au-delà de 1000).

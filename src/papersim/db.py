@@ -187,36 +187,58 @@ def get_embedding(
     return row["embedding"] if row else None
 
 
-# --- Favoris ----------------------------------------------------------------------------
+# --- Favoris (par compte) ---------------------------------------------------------------
 
 
-def add_favorite(conn: psycopg.Connection, paper_id: str) -> None:
+def add_favorite(conn: psycopg.Connection, user_id: int, paper_id: str) -> None:
     """Ajoute un favori (sans effet s'il existe déjà) ; KeyError si le papier est inconnu."""
     try:
         with conn.transaction():
             conn.execute(
-                "INSERT INTO favorites (paper_id) VALUES (%s) ON CONFLICT DO NOTHING", (paper_id,)
+                "INSERT INTO user_favorites (user_id, paper_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                (user_id, paper_id),
             )
     except psycopg.errors.ForeignKeyViolation:
         raise KeyError(paper_id) from None
 
 
-def remove_favorite(conn: psycopg.Connection, paper_id: str) -> bool:
-    cur = conn.execute("DELETE FROM favorites WHERE paper_id = %s", (paper_id,))
+def remove_favorite(conn: psycopg.Connection, user_id: int, paper_id: str) -> bool:
+    cur = conn.execute(
+        "DELETE FROM user_favorites WHERE user_id = %s AND paper_id = %s", (user_id, paper_id)
+    )
     return cur.rowcount > 0
 
 
-def list_favorites(conn: psycopg.Connection) -> list[dict]:
-    """Favoris du plus récent au plus ancien, avec la fiche du papier."""
+def list_favorites(conn: psycopg.Connection, user_id: int) -> list[dict]:
+    """Favoris d'un compte, du plus récent au plus ancien, avec la fiche du papier."""
     columns = ", ".join(f"p.{c.strip()}" for c in PAPER_COLUMNS.split(","))
     rows = conn.execute(
         f"""
         SELECT {columns}, f.created_at AS favorited_at
-        FROM favorites f JOIN papers p ON p.id = f.paper_id
+        FROM user_favorites f JOIN papers p ON p.id = f.paper_id
+        WHERE f.user_id = %s
         ORDER BY f.created_at DESC
-        """
+        """,
+        (user_id,),
     ).fetchall()
     return [{"paper": {k: v for k, v in r.items() if k != "favorited_at"}, "added_at": r["favorited_at"]} for r in rows]
+
+
+def adopt_legacy_favorites(conn: psycopg.Connection, user_id: int) -> int:
+    """Donne au compte les favoris enregistrés avant l'arrivée des comptes, puis supprime
+    l'ancienne table. Renvoie le nombre de favoris repris (0 s'il n'y a rien à reprendre)."""
+    if conn.execute("SELECT to_regclass('favorites') AS t").fetchone()["t"] is None:
+        return 0
+    cur = conn.execute(
+        """
+        INSERT INTO user_favorites (user_id, paper_id, created_at)
+        SELECT %s, paper_id, created_at FROM favorites
+        ON CONFLICT DO NOTHING
+        """,
+        (user_id,),
+    )
+    conn.execute("DROP TABLE favorites")
+    return cur.rowcount
 
 
 # --- Bibliothèque : parcours du corpus ------------------------------------------------------

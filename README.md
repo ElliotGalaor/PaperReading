@@ -64,6 +64,18 @@ des homonymes peuvent apparaître. « et N autres » déplie la liste complète 
 Les **formules LaTeX** des titres et résumés (`$T_c$`, `$H$-$φ$`…) sont mises en forme avec
 KaTeX, chargé depuis un CDN (jsDelivr) : sans connexion Internet, le texte brut reste affiché.
 
+**Comptes** : la Bibliothèque et la recherche sont ouvertes à tous ; les favoris demandent un
+compte, et chaque compte a les siens. « Créer un compte » (en haut à droite) inscrit un nouvel
+utilisateur ; `PAPERSIM_ALLOW_SIGNUP=false` ferme les inscriptions, les comptes se créent alors
+avec `papersim create-user NOM` (le mot de passe est demandé sans être affiché). Les favoris
+enregistrés avant l'arrivée des comptes reviennent au **premier compte créé**.
+
+Sécurité : mots de passe hachés avec scrypt ; session dans un cookie HttpOnly dont la base ne
+garde que l'empreinte ; attente imposée après 5 échecs de connexion. Le serveur écoute sur
+`127.0.0.1` (cette machine seulement). Pour l'ouvrir à d'autres machines
+(`papersim serve --host 0.0.0.0`), utilisez un réseau de confiance ou un proxy HTTPS, puis
+`PAPERSIM_COOKIE_SECURE=true` : en HTTP simple, les mots de passe circulent en clair.
+
 **Favoris** : l'étoile ☆ à côté d'un papier (résultats, papier reconnu, pages de classement)
 l'enregistre ; ★ le retire. L'onglet **Favoris** (ou l'adresse `/#favoris`) liste les papiers
 enregistrés, du plus récent au plus ancien, avec leur date d'ajout. Les favoris sont stockés dans
@@ -117,9 +129,12 @@ car leur compatibilité exacte n'est pas vérifiée. Changer de source demande d
 | `POST` | `/search/text` | `{"query", "k", "year_min", "year_max"}` : idem pour un texte long |
 | `GET` | `/papers/{id}/ranking/{signal}?k=15` | Classement d'un seul signal (`semantic`, `lexical`, `citations`) |
 | `POST` | `/search/text/ranking` | `{"query", "signal", "k", "year_min", "year_max"}` : idem pour un texte |
-| `GET` | `/favorites` | Papiers en favoris (plus récent d'abord) |
-| `PUT` | `/favorites/{id}` | Ajoute un favori |
-| `DELETE` | `/favorites/{id}` | Retire un favori |
+| `GET` | `/favorites` | Favoris du compte connecté (plus récent d'abord) |
+| `PUT` | `/favorites/{id}` | Ajoute un favori (compte connecté) |
+| `DELETE` | `/favorites/{id}` | Retire un favori (compte connecté) |
+| `POST` | `/auth/signup`, `/auth/login` | `{"username", "password"}` : inscription, connexion (cookie de session) |
+| `POST` | `/auth/logout` | Déconnexion |
+| `GET` | `/auth/me` | Compte connecté (ou `null`) |
 | `GET` | `/corpus/categories` | Thèmes présents dans le corpus, avec leur nombre de papiers |
 | `GET` | `/corpus/years` | Années extrêmes du corpus |
 | `POST` | `/search/file` | Fichier en `multipart/form-data` (`file`, `k`, `year_min`, `year_max`) |
@@ -146,6 +161,9 @@ src/papersim/
   static/authors.js   liens des auteurs vers leur bibliographie (partagé par les deux pages)
   static/math.js      rendu des formules LaTeX avec KaTeX (partagé par les deux pages)
   static/favorites.js boutons étoile des favoris (partagé par les deux pages)
+  static/session.js   barre « Se connecter / Se déconnecter » (partagé par les deux pages)
+  static/login.html   page de connexion et d'inscription
+  auth.py             comptes, mots de passe (scrypt), sessions, limitation des essais
   search.py           signaux semantic / lexical / citations + fusion RRF
   api.py, cli.py      FastAPI et ligne de commande
 ```

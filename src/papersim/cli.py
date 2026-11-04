@@ -31,6 +31,22 @@ def init_db() -> None:
     typer.echo("Base initialisée.")
 
 
+@app.command("create-user")
+def create_user(
+    username: str = typer.Argument(..., help="3 à 32 caractères : lettres, chiffres, . _ -"),
+) -> None:
+    """Crée un compte (le mot de passe est demandé sans être affiché)."""
+    from . import auth
+
+    password = typer.prompt("Mot de passe", hide_input=True, confirmation_prompt="Confirmer le mot de passe")
+    with db.connect() as conn:
+        try:
+            user = auth.create_user(conn, username, password)
+        except ValueError as e:
+            raise typer.BadParameter(str(e))
+    typer.echo(f"Compte « {user['username']} » créé.")
+
+
 @app.command("ingest-arxiv")
 def ingest_arxiv(
     query: str = typer.Argument(..., help='Ex. \'cat:cond-mat.supr-con AND abs:"pseudogap"\''),

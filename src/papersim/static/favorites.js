@@ -1,5 +1,6 @@
-// Favoris enregistrés dans la base (API /favorites), partagés par les pages web.
+// Favoris du compte connecté (API /favorites), partagés par les pages web.
 // Toutes les étoiles d'une même page se mettent à jour ensemble.
+// Sans compte connecté, cliquer sur une étoile mène à la page de connexion.
 (function () {
   "use strict";
 
@@ -15,24 +16,34 @@
     window.dispatchEvent(new CustomEvent("paperfavorites:error", { detail: message }));
   }
 
-  // Charge la liste complète ; renvoie [{ paper, added_at }, …] (vide si le serveur ne répond pas).
+  function goToLogin() {
+    location.href = window.PaperSession ? PaperSession.loginUrl() : "/login";
+  }
+
+  // Charge la liste complète ; renvoie [{ paper, added_at }, …]
+  // (vide sans compte connecté ou si le serveur ne répond pas).
   async function load() {
     try {
       const resp = await fetch("/favorites");
-      if (!resp.ok) return [];
-      const data = await resp.json();
       ids.clear();
-      for (const f of data.favorites || []) ids.add(f.paper.id);
+      if (resp.ok) {
+        const data = await resp.json();
+        for (const f of data.favorites || []) ids.add(f.paper.id);
+        notify();
+        return data.favorites || [];
+      }
       notify();
-      return data.favorites || [];
+      return [];
     } catch {
       return [];
     }
   }
 
   async function toggle(paperId) {
+    if (window.PaperSession && !PaperSession.user()) return goToLogin();
     const add = !ids.has(paperId);
     const resp = await fetch(`/favorites/${encodeURI(paperId)}`, { method: add ? "PUT" : "DELETE" });
+    if (resp.status === 401) return goToLogin();  // session expirée
     if (!resp.ok) {
       const data = await resp.json().catch(() => ({}));
       throw new Error(typeof data.detail === "string" ? data.detail : `Erreur du serveur (${resp.status}).`);
@@ -43,10 +54,12 @@
 
   function update(button) {
     const on = ids.has(button.dataset.paperId);
+    const loggedOut = window.PaperSession && !PaperSession.user();
+    const label = loggedOut ? "Se connecter pour ajouter aux favoris" : on ? "Retirer des favoris" : "Ajouter aux favoris";
     button.setAttribute("aria-pressed", String(on));
     button.textContent = on ? "★" : "☆";
-    button.title = on ? "Retirer des favoris" : "Ajouter aux favoris";
-    button.setAttribute("aria-label", `${on ? "Retirer des favoris" : "Ajouter aux favoris"} : ${button.dataset.title}`);
+    button.title = label;
+    button.setAttribute("aria-label", `${label} : ${button.dataset.title}`);
   }
 
   // Bouton étoile pour un papier du corpus.
@@ -71,6 +84,9 @@
     });
     return b;
   }
+
+  // Les libellés des étoiles dépendent de la connexion : mise à jour une fois connue.
+  if (window.PaperSession) PaperSession.ready.then(notify);
 
   window.PaperFavorites = {
     load,

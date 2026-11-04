@@ -47,8 +47,30 @@ CREATE TABLE IF NOT EXISTS paper_references (
 );
 CREATE INDEX IF NOT EXISTS paper_references_ref_idx ON paper_references (ref_openalex_id);
 
--- Papiers mis en favoris depuis l'interface.
-CREATE TABLE IF NOT EXISTS favorites (
-    paper_id   TEXT PRIMARY KEY REFERENCES papers (id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+-- Comptes utilisateurs (mots de passe hachés avec scrypt, jamais en clair).
+CREATE TABLE IF NOT EXISTS users (
+    id            BIGSERIAL PRIMARY KEY,
+    username      TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE UNIQUE INDEX IF NOT EXISTS users_username_idx ON users (lower(username));
+
+-- Sessions de connexion : seul le hachage du jeton du cookie est stocké.
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,
+    user_id    BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions (user_id);
+
+-- Favoris, propres à chaque compte.
+-- (L'ancienne table « favorites », sans compte, est reprise par le premier compte créé.)
+CREATE TABLE IF NOT EXISTS user_favorites (
+    user_id    BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    paper_id   TEXT NOT NULL REFERENCES papers (id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, paper_id)
+);
+CREATE INDEX IF NOT EXISTS user_favorites_recent_idx ON user_favorites (user_id, created_at DESC);

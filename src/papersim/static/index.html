@@ -49,6 +49,13 @@
     font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
   main { max-width: 860px; margin: 0 auto; padding: 40px 16px 64px; }
+  .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; }
+  .user-bar { display: flex; align-items: center; gap: 4px 12px; flex-wrap: wrap; justify-content: flex-end; font-size: .88rem; }
+  .user-name { font-weight: 600; }
+  .user-name::before { content: "● "; color: var(--accent); font-size: .7em; vertical-align: 2px; }
+  .user-link { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none; }
+  .user-link:hover { text-decoration: underline; }
+  .user-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
   header h1 { margin: 0; font-size: 1.8rem; letter-spacing: -0.01em; }
   header p { margin: 4px 0 28px; color: var(--muted); }
 
@@ -224,9 +231,12 @@
 </head>
 <body>
 <main>
-  <header>
-    <h1>PaperReading</h1>
-    <p>Parcourez votre bibliothèque de papiers, ou déposez un article pour trouver les plus proches.</p>
+  <header class="page-head">
+    <div>
+      <h1>PaperReading</h1>
+      <p>Parcourez votre bibliothèque de papiers, ou déposez un article pour trouver les plus proches.</p>
+    </div>
+    <nav id="user-bar" class="user-bar" aria-label="Compte"></nav>
   </header>
 
   <div class="tabbar">
@@ -324,6 +334,7 @@
 
 <script src="/static/authors.js"></script>
 <script src="/static/math.js"></script>
+<script src="/static/session.js"></script>
 <script src="/static/favorites.js"></script>
 <script>
 (() => {
@@ -639,6 +650,13 @@
   function renderFavorites() {
     const list = $("favs"), view = currentView();
     list.dataset.view = view;
+    if (!PaperSession.user()) {  // favoris réservés aux comptes connectés
+      $("favs-title").textContent = "Favoris";
+      const link = el("a", { href: PaperSession.loginUrl(), textContent: "Connectez-vous" });
+      list.replaceChildren(el("p", { className: "empty" }, link,
+        " pour enregistrer vos favoris : chaque compte a les siens."));
+      return;
+    }
     $("favs-title").textContent = favList.length
       ? `${favList.length} papier${favList.length > 1 ? "s" : ""} en favoris`
       : "Favoris";
@@ -652,7 +670,8 @@
 
   async function loadFavorites() {
     $("favs-error").hidden = true;
-    favList = await PaperFavorites.load();
+    await PaperSession.ready;
+    favList = PaperSession.user() ? await PaperFavorites.load() : [];
     renderFavorites();
   }
 
@@ -894,7 +913,7 @@
     $("lib-error").textContent = FILE_MODE_MESSAGE;
     $("lib-error").hidden = false;
   } else {
-    PaperFavorites.load();
+    PaperSession.ready.then(() => { if (PaperSession.user()) PaperFavorites.load(); });
     loadCategories();
     const initial = Object.keys(TAB_HASH).find((k) => TAB_HASH[k] && TAB_HASH[k] === location.hash) || "library";
     selectTab(initial);

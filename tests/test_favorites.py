@@ -5,74 +5,113 @@ from fastapi.testclient import TestClient
 
 from papersim import api
 
+ALICE = {"id": 1, "username": "alice"}
+BOB = {"id": 2, "username": "bob"}
+
 
 class FakeConn:
     pass
 
 
 @pytest.fixture
-def client(monkeypatch):
-    """Favoris en mémoire à la place de la base."""
-    store: dict[str, datetime] = {}
-    known = {"arxiv:1", "arxiv:hep-th/9901001"}
+def setup(monkeypatch):
+    """Favoris en mémoire par compte, et compte connecté choisi par le test."""
+    store: dict[tuple[int, str], datetime] = {}
+    known = {"arxiv:1", "arxiv:2", "arxiv:hep-th/9901001"}
+    who = {"user": ALICE}
 
-    def add(conn, pid):
+    def add(conn, uid, pid):
         if pid not in known:
             raise KeyError(pid)
-        store.setdefault(pid, datetime.now(timezone.utc))
+        store.setdefault((uid, pid), datetime.now(timezone.utc))
 
-    def remove(conn, pid):
-        return store.pop(pid, None) is not None
+    def remove(conn, uid, pid):
+        return store.pop((uid, pid), None) is not None
 
-    def listing(conn):
+    def listing(conn, uid):
+        mine = [(pid, t) for (u, pid), t in store.items() if u == uid]
         return [{"paper": {"id": pid, "title": "T"}, "added_at": t}
-                for pid, t in sorted(store.items(), key=lambda kv: kv[1], reverse=True)]
+                for pid, t in sorted(mine, key=lambda kv: kv[1], reverse=True)]
 
     monkeypatch.setattr(api.db, "add_favorite", add)
     monkeypatch.setattr(api.db, "remove_favorite", remove)
     monkeypatch.setattr(api.db, "list_favorites", listing)
     api.app.dependency_overrides[api.get_conn] = lambda: FakeConn()
-    yield TestClient(api.app)
+    api.app.dependency_overrides[api.optional_user] = lambda: who["user"]
+    yield TestClient(api.app), who
     api.app.dependency_overrides.clear()
 
 
-def test_add_list_remove(client):
-    assert client.get("/favorites").json() == {"favorites": []}
+def ids(client):
+    return [f["paper"]["id"] for f in client.get("/favorites").json()["favorites"]]
 
+
+def test_add_list_remove(setup):
+    client, _ = setup
+    assert ids(client) == []
     resp = client.put("/favorites/arxiv:1")
     assert resp.status_code == 200 and resp.json() == {"paper_id": "arxiv:1", "favorite": True}
     client.put("/favorites/arxiv:hep-th/9901001")  # identifiant avec « / »
     client.put("/favorites/arxiv:1")              # deux fois : sans effet
-
-    favs = client.get("/favorites").json()["favorites"]
-    assert [f["paper"]["id"] for f in favs] == ["arxiv:hep-th/9901001", "arxiv:1"]  # plus récent d'abord
-    assert "added_at" in favs[0]
-
-    resp = client.delete("/favorites/arxiv:hep-th/9901001")
-    assert resp.json() == {"paper_id": "arxiv:hep-th/9901001", "favorite": False}
-    assert [f["paper"]["id"] for f in client.get("/favorites").json()["favorites"]] == ["arxiv:1"]
+    assert ids(client) == ["arxiv:hep-th/9901001", "arxiv:1"]  # plus récent d'abord
+    client.delete("/favorites/arxiv:hep-th/9901001")
+    assert ids(client) == ["arxiv:1"]
 
 
-def test_unknown_paper_is_404(client):
+def test_each_account_has_its_own_favorites(setup):
+    client, who = setup
+    client.put("/favorites/arxiv:1")
+    who["user"] = BOB
+    assert ids(client) == []
+    client.put("/favorites/arxiv:2")
+    client.delete("/favorites/arxiv:1")  # ne touche pas aux favoris d'Alice
+    assert ids(client) == ["arxiv:2"]
+    who["user"] = ALICE
+    assert ids(client) == ["arxiv:1"]
+
+
+def test_favorites_require_login(setup):
+    client, who = setup
+    who["user"] = None
+    for method, url in [("get", "/favorites"), ("put", "/favorites/arxiv:1"), ("delete", "/favorites/arxiv:1")]:
+        resp = getattr(client, method)(url)
+        assert resp.status_code == 401
+        assert "Connectez-vous" in resp.json()["detail"]
+
+
+def test_library_stays_public(setup, monkeypatch):
+    client, who = setup
+    who["user"] = None
+    monkeypatch.setattr(api.db, "list_papers", lambda conn, **kw: (0, []))
+    assert client.get("/papers").status_code == 200
+    assert client.get("/").status_code == 200
+
+
+def test_unknown_paper_is_404(setup):
+    client, _ = setup
     resp = client.put("/favorites/arxiv:404")
-    assert resp.status_code == 404
-    assert "inconnu" in resp.json()["detail"]
+    assert resp.status_code == 404 and "inconnu" in resp.json()["detail"]
 
 
-def test_removing_absent_favorite_is_harmless(client):
+def test_removing_absent_favorite_is_harmless(setup):
+    client, _ = setup
     assert client.delete("/favorites/arxiv:1").status_code == 200
 
 
-def test_pages_load_favorites_script(client):
+def test_pages_load_session_and_favorites_scripts(setup):
+    client, _ = setup
     for page in ("/", "/ranking"):
-        assert '<script src="/static/favorites.js"></script>' in client.get(page).text
-    js = client.get("/static/favorites.js")
-    assert js.status_code == 200 and "PaperFavorites" in js.text
+        html = client.get(page).text
+        assert html.index("/static/session.js") < html.index("/static/favorites.js")
+        assert 'id="user-bar"' in html
+    for script in ("favorites.js", "session.js"):
+        assert client.get(f"/static/{script}").status_code == 200
 
 
-def test_schema_declares_favorites_table():
+def test_schema_declares_user_tables():
     from importlib.resources import files
 
     sql = files("papersim").joinpath("schema.sql").read_text(encoding="utf-8")
-    assert "CREATE TABLE IF NOT EXISTS favorites" in sql
-    assert "ON DELETE CASCADE" in sql.split("favorites", 1)[1]
+    for table in ("users", "sessions", "user_favorites"):
+        assert f"CREATE TABLE IF NOT EXISTS {table}" in sql
+    assert "PRIMARY KEY (user_id, paper_id)" in sql

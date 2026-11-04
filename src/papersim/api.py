@@ -5,18 +5,19 @@ arxiv:hep-th/9901001), d'où le convertisseur {paper_id:path}.
 """
 
 import logging
+import math
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from importlib.resources import files
 from typing import Literal
 
 import psycopg
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import db, extract, filesearch, keywords, pipeline, search
+from . import auth, db, extract, filesearch, keywords, pipeline, search
 from .config import settings
 from .embeddings import get_embedder
 from .ids import normalize_doi
@@ -48,6 +49,91 @@ app.mount("/static", StaticFiles(directory=str(files("papersim").joinpath("stati
 def get_conn() -> Iterator[psycopg.Connection]:
     with db.connect() as conn:
         yield conn
+
+
+# --- Comptes et sessions ------------------------------------------------------------------
+# Bibliothèque et recherche sont ouvertes à tous ; seuls les favoris demandent un compte.
+
+SESSION_COOKIE = "papersim_session"
+login_throttle = auth.LoginThrottle()
+
+
+def optional_user(request: Request, conn: psycopg.Connection = Depends(get_conn)) -> dict | None:
+    return auth.user_from_session(conn, request.cookies.get(SESSION_COOKIE))
+
+
+def current_user(user: dict | None = Depends(optional_user)) -> dict:
+    if user is None:
+        raise HTTPException(401, "Connectez-vous pour utiliser les favoris.")
+    return user
+
+
+class Credentials(BaseModel):
+    username: str = Field(..., max_length=64)
+    password: str = Field(..., max_length=1024)
+
+
+def _open_session(response: Response, conn: psycopg.Connection, user: dict) -> dict:
+    token = auth.create_session(conn, user["id"], settings.session_days)
+    response.set_cookie(
+        SESSION_COOKIE, token, max_age=settings.session_days * 86400,
+        httponly=True, samesite="lax", secure=settings.cookie_secure, path="/",
+    )
+    return {"user": {"username": user["username"]}}
+
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "?"
+
+
+@app.get("/auth/me")
+def whoami(user: dict | None = Depends(optional_user)) -> dict:
+    """Compte connecté (ou null) et possibilité de s'inscrire."""
+    return {
+        "user": {"username": user["username"]} if user else None,
+        "allow_signup": settings.allow_signup,
+    }
+
+
+@app.post("/auth/login")
+def login(creds: Credentials, request: Request, response: Response,
+          conn: psycopg.Connection = Depends(get_conn)) -> dict:
+    ip = _client_ip(request)
+    wait = login_throttle.wait_time(ip, creds.username)
+    if wait > 0:
+        raise HTTPException(429, f"Trop d'essais ratés. Réessayez dans {math.ceil(wait)} s.")
+    user = auth.authenticate(conn, creds.username, creds.password)
+    if user is None:
+        login_throttle.failure(ip, creds.username)
+        raise HTTPException(401, "Identifiant ou mot de passe incorrect.")
+    login_throttle.success(ip, creds.username)
+    return _open_session(response, conn, user)
+
+
+@app.post("/auth/signup")
+def signup(creds: Credentials, response: Response, conn: psycopg.Connection = Depends(get_conn)) -> dict:
+    if not settings.allow_signup:
+        raise HTTPException(403, "Les inscriptions sont fermées. Demandez un compte à l'administrateur.")
+    try:
+        user = auth.create_user(conn, creds.username, creds.password)
+    except ValueError as e:
+        raise HTTPException(409 if "déjà pris" in str(e) else 422, str(e))
+    return _open_session(response, conn, user)
+
+
+@app.post("/auth/logout")
+def logout(request: Request, response: Response, conn: psycopg.Connection = Depends(get_conn)) -> dict:
+    auth.delete_session(conn, request.cookies.get(SESSION_COOKIE))
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return {"user": None}
+
+
+@app.get("/login", response_class=HTMLResponse, include_in_schema=False)
+def login_page() -> str:
+    return files("papersim").joinpath("static/login.html").read_text(encoding="utf-8")
+
+
+# --- Modèles de requêtes ---------------------------------------------------------------------
 
 
 class IngestRequest(BaseModel):
@@ -198,23 +284,25 @@ def text_ranking(req: SignalRankingRequest, conn: psycopg.Connection = Depends(g
 
 
 @app.get("/favorites")
-def list_favorites(conn: psycopg.Connection = Depends(get_conn)) -> dict:
-    """Papiers enregistrés en favoris, du plus récent au plus ancien."""
-    return {"favorites": db.list_favorites(conn)}
+def list_favorites(user: dict = Depends(current_user), conn: psycopg.Connection = Depends(get_conn)) -> dict:
+    """Favoris du compte connecté, du plus récent au plus ancien."""
+    return {"favorites": db.list_favorites(conn, user["id"])}
 
 
 @app.put("/favorites/{paper_id:path}")
-def add_favorite(paper_id: str, conn: psycopg.Connection = Depends(get_conn)) -> dict:
+def add_favorite(paper_id: str, user: dict = Depends(current_user),
+                 conn: psycopg.Connection = Depends(get_conn)) -> dict:
     try:
-        db.add_favorite(conn, paper_id)
+        db.add_favorite(conn, user["id"], paper_id)
     except KeyError:
         raise HTTPException(404, f"Papier inconnu : {paper_id}")
     return {"paper_id": paper_id, "favorite": True}
 
 
 @app.delete("/favorites/{paper_id:path}")
-def remove_favorite(paper_id: str, conn: psycopg.Connection = Depends(get_conn)) -> dict:
-    db.remove_favorite(conn, paper_id)
+def remove_favorite(paper_id: str, user: dict = Depends(current_user),
+                    conn: psycopg.Connection = Depends(get_conn)) -> dict:
+    db.remove_favorite(conn, user["id"], paper_id)
     return {"paper_id": paper_id, "favorite": False}
 
 

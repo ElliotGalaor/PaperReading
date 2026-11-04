@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connexion · PaperReading</title>
+<style>
+  :root {
+    --bg: #f6f5f1;
+    --surface: #ffffff;
+    --text: #1d1d1b;
+    --muted: #6b6a64;
+    --border: #e2e0d8;
+    --accent: #2f5d8a;
+    --accent-soft: #e6eef6;
+    --on-accent: #ffffff;
+    --error-bg: #fbe7e5;
+    --error-text: #8f2a20;
+    --radius: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161614;
+      --surface: #201f1d;
+      --text: #ecebe6;
+      --muted: #a3a29b;
+      --border: #34332f;
+      --accent: #8db7e0;
+      --accent-soft: #23303d;
+      --on-accent: #10202f;
+      --error-bg: #3d2220;
+      --error-text: #f4aaa2;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 400px; margin: 0 auto; padding: 56px 16px 64px; }
+  .back { color: var(--accent); font-size: .9rem; text-decoration: none; }
+  .back:hover { text-decoration: underline; }
+  h1 { margin: 14px 0 4px; font-size: 1.6rem; letter-spacing: -0.01em; }
+  .lead { margin: 0 0 22px; color: var(--muted); }
+  form { display: grid; gap: 14px; padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  label { display: grid; gap: 4px; font-size: .9rem; font-weight: 600; }
+  label small { font-weight: 400; color: var(--muted); }
+  input {
+    font: inherit; font-weight: 400; color: var(--text); background: var(--bg);
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+  }
+  input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button[type="submit"] {
+    font: inherit; font-weight: 600; color: var(--on-accent); background: var(--accent);
+    border: 0; border-radius: 8px; padding: 9px 14px; cursor: pointer;
+  }
+  button[type="submit"]:disabled { opacity: .6; cursor: progress; }
+  button[type="submit"]:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+  .error { padding: 10px 12px; border-radius: 8px; background: var(--error-bg); color: var(--error-text); font-size: .9rem; }
+  .switch { margin: 16px 2px 0; color: var(--muted); font-size: .92rem; }
+  .switch a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" id="back" href="/">← Retour à PaperReading</a>
+  <h1 id="heading">Se connecter</h1>
+  <p class="lead" id="lead">Connectez-vous pour retrouver vos favoris.</p>
+
+  <form id="form" novalidate>
+    <div class="error" id="error" role="alert" hidden></div>
+    <label>Identifiant
+      <input id="username" name="username" autocomplete="username" required maxlength="32" autocapitalize="off" spellcheck="false">
+    </label>
+    <label>Mot de passe <small id="pw-hint" hidden>8 caractères au moins</small>
+      <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256">
+    </label>
+    <label id="confirm-row" hidden>Confirmer le mot de passe
+      <input id="confirm" name="confirm" type="password" autocomplete="new-password" maxlength="256">
+    </label>
+    <button type="submit" id="submit">Se connecter</button>
+  </form>
+  <p class="switch" id="switch"></p>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const params = new URLSearchParams(location.search);
+
+  // Retour après connexion : uniquement une adresse de ce site (pas « //autre-site »).
+  function safeNext() {
+    const next = params.get("next") || "/";
+    return next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : "/";
+  }
+  const next = safeNext();
+  $("back").href = next;
+
+  let mode = params.get("mode") === "signup" ? "signup" : "login";
+  let allowSignup = true;
+
+  function setMode(m) {
+    mode = m === "signup" && allowSignup ? "signup" : "login";
+    const signup = mode === "signup";
+    document.title = `${signup ? "Créer un compte" : "Connexion"} · PaperReading`;
+    $("heading").textContent = signup ? "Créer un compte" : "Se connecter";
+    $("lead").textContent = signup
+      ? "Un compte garde vos favoris, séparés de ceux des autres utilisateurs."
+      : "Connectez-vous pour retrouver vos favoris.";
+    $("submit").textContent = signup ? "Créer le compte" : "Se connecter";
+    $("password").autocomplete = signup ? "new-password" : "current-password";
+    $("confirm-row").hidden = !signup;
+    $("pw-hint").hidden = !signup;
+    $("error").hidden = true;
+    const sw = $("switch");
+    sw.replaceChildren();
+    if (!allowSignup) {
+      sw.textContent = "Pas de compte ? Demandez-en un à l'administrateur.";
+    } else {
+      sw.append(signup ? "Déjà un compte ? " : "Pas encore de compte ? ");
+      const a = document.createElement("a");
+      a.href = "#";
+      a.textContent = signup ? "Se connecter" : "Créer un compte";
+      a.addEventListener("click", (e) => { e.preventDefault(); setMode(signup ? "login" : "signup"); $("username").focus(); });
+      sw.append(a);
+    }
+  }
+
+  function fail(message, field) {
+    $("error").textContent = message;
+    $("error").hidden = false;
+    if (field) $(field).focus();
+  }
+
+  $("form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const username = $("username").value.trim();
+    const password = $("password").value;
+    if (!username) return fail("Indiquez votre identifiant.", "username");
+    if (!password) return fail("Indiquez votre mot de passe.", "password");
+    if (mode === "signup") {
+      if (!/^[A-Za-z0-9._-]{3,32}$/.test(username)) {
+        return fail("Identifiant : 3 à 32 caractères parmi lettres, chiffres, « . », « _ » et « - ».", "username");
+      }
+      if (password.length < 8) return fail("Mot de passe trop court : 8 caractères au moins.", "password");
+      if (password !== $("confirm").value) return fail("Les deux mots de passe ne correspondent pas.", "confirm");
+    }
+    $("submit").disabled = true;
+    try {
+      const resp = await fetch(mode === "signup" ? "/auth/signup" : "/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        const detail = typeof data.detail === "string" ? data.detail : `Erreur du serveur (${resp.status}).`;
+        return fail(detail, resp.status === 409 ? "username" : "password");
+      }
+      location.replace(next);
+    } catch {
+      fail("Le serveur ne répond pas. Est-il lancé (papersim serve) ?");
+    } finally {
+      $("submit").disabled = false;
+    }
+  });
+
+  // Déjà connecté : retour direct. Sinon, la page sait si l'inscription est ouverte.
+  fetch("/auth/me").then((r) => r.json()).then((me) => {
+    if (me.user) return location.replace(next);
+    allowSignup = !!me.allow_signup;
+    setMode(mode);
+  }).catch(() => setMode(mode));
+  setMode(mode);
+  $("username").focus();
+})();
+</script>
+</body>
+</html>
