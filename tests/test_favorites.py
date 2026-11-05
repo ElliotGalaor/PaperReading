@@ -103,9 +103,18 @@ def test_pages_load_session_and_favorites_scripts(setup):
     for page in ("/", "/ranking"):
         html = client.get(page).text
         assert html.index("/static/session.js") < html.index("/static/favorites.js")
-        assert 'id="user-bar"' in html
-    for script in ("favorites.js", "session.js"):
-        assert client.get(f"/static/{script}").status_code == 200
+        assert 'id="user-bar"' not in html  # remplacé par l'onglet « Compte » du bord droit
+        assert '<link rel="stylesheet" href="/static/session.css">' in html  # panneau de connexion
+    for script in ("favorites.js", "session.js", "session.css"):
+        resp = client.get(f"/static/{script}")
+        assert resp.status_code == 200
+        # Le navigateur doit revérifier les scripts : jamais d'ancienne version avec une page récente.
+        assert resp.headers["cache-control"] == "no-cache"
+        etag = resp.headers["etag"]
+        assert client.get(f"/static/{script}", headers={"If-None-Match": etag}).status_code == 304
+    js = client.get("/static/session.js").text
+    assert "openLogin" in js and 'aria-modal' in js
+    assert "account-edge" in js and "account-edge" in client.get("/static/session.css").text
 
 
 def test_schema_declares_user_tables():

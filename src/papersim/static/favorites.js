@@ -16,8 +16,24 @@
     window.dispatchEvent(new CustomEvent("paperfavorites:error", { detail: message }));
   }
 
-  function goToLogin() {
-    location.href = window.PaperSession ? PaperSession.loginUrl() : "/login";
+  // Ouvre le panneau de connexion ; une fois connecté, le papier cliqué est mis en favori.
+  function goToLogin(paperId, trigger) {
+    // Panneau indisponible (ancien script en cache…) : page de connexion à la place.
+    if (!window.PaperSession || typeof PaperSession.openLogin !== "function") {
+      location.href = window.PaperSession ? PaperSession.loginUrl() : "/login";
+      return;
+    }
+    PaperSession.openLogin("login", {
+      trigger,
+      onSuccess: async () => {
+        try {
+          await load();
+          if (paperId && !ids.has(paperId)) await toggle(paperId);
+        } catch (err) {
+          emitError(`Favori non enregistré : ${err.message}`);
+        }
+      },
+    });
   }
 
   // Charge la liste complète ; renvoie [{ paper, added_at }, …]
@@ -39,11 +55,11 @@
     }
   }
 
-  async function toggle(paperId) {
-    if (window.PaperSession && !PaperSession.user()) return goToLogin();
+  async function toggle(paperId, trigger) {
+    if (window.PaperSession && !PaperSession.user()) return goToLogin(paperId, trigger);
     const add = !ids.has(paperId);
     const resp = await fetch(`/favorites/${encodeURI(paperId)}`, { method: add ? "PUT" : "DELETE" });
-    if (resp.status === 401) return goToLogin();  // session expirée
+    if (resp.status === 401) return goToLogin(paperId, trigger);  // session expirée
     if (!resp.ok) {
       const data = await resp.json().catch(() => ({}));
       throw new Error(typeof data.detail === "string" ? data.detail : `Erreur du serveur (${resp.status}).`);
@@ -73,7 +89,7 @@
     b.addEventListener("click", async () => {
       b.disabled = true;
       try {
-        await toggle(paper.id);
+        await toggle(paper.id, b);
       } catch (err) {
         emitError(err.message === "Failed to fetch"
           ? "Le serveur ne répond pas : favori non enregistré."
@@ -85,8 +101,15 @@
     return b;
   }
 
-  // Les libellés des étoiles dépendent de la connexion : mise à jour une fois connue.
-  if (window.PaperSession) PaperSession.ready.then(notify);
+  // Les libellés des étoiles dépendent de la connexion : mise à jour une fois connue,
+  // puis à chaque connexion (favoris du compte) ou déconnexion (plus aucun favori).
+  if (window.PaperSession) {
+    PaperSession.ready.then(notify);
+    PaperSession.onChange((user) => {
+      if (user) load();
+      else { ids.clear(); notify(); }
+    });
+  }
 
   window.PaperFavorites = {
     load,

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PaperReading</title>
+<link rel="stylesheet" href="/static/session.css">
 <!-- KaTeX : rendu des formules LaTeX des titres et résumés (texte brut si hors ligne). -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
@@ -50,12 +51,6 @@
   }
   main { max-width: 860px; margin: 0 auto; padding: 40px 16px 64px; }
   .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; }
-  .user-bar { display: flex; align-items: center; gap: 4px 12px; flex-wrap: wrap; justify-content: flex-end; font-size: .88rem; }
-  .user-name { font-weight: 600; }
-  .user-name::before { content: "● "; color: var(--accent); font-size: .7em; vertical-align: 2px; }
-  .user-link { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none; }
-  .user-link:hover { text-decoration: underline; }
-  .user-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
   header h1 { margin: 0; font-size: 1.8rem; letter-spacing: -0.01em; }
   header p { margin: 4px 0 28px; color: var(--muted); }
 
@@ -236,7 +231,6 @@
       <h1>PaperReading</h1>
       <p>Parcourez votre bibliothèque de papiers, ou déposez un article pour trouver les plus proches.</p>
     </div>
-    <nav id="user-bar" class="user-bar" aria-label="Compte"></nav>
   </header>
 
   <div class="tabbar">
@@ -653,6 +647,12 @@
     if (!PaperSession.user()) {  // favoris réservés aux comptes connectés
       $("favs-title").textContent = "Favoris";
       const link = el("a", { href: PaperSession.loginUrl(), textContent: "Connectez-vous" });
+      // Panneau si disponible ; sinon le lien mène normalement à la page /login.
+      link.addEventListener("click", (e) => {
+        if (typeof PaperSession.openLogin !== "function") return;
+        e.preventDefault();
+        PaperSession.openLogin("login", { trigger: link });
+      });
       list.replaceChildren(el("p", { className: "empty" }, link,
         " pour enregistrer vos favoris : chaque compte a les siens."));
       return;
@@ -880,6 +880,9 @@
       selectTab(tabOrder[(next + tabOrder.length) % tabOrder.length], true);
     });
   }
+
+  // Connexion / déconnexion depuis le panneau : l'onglet Favoris suit sans recharger la page.
+  PaperSession.onChange(() => { if (activeTab === "favs") loadFavorites(); });
 
   PaperFavorites.onChange(() => {
     updateFavCount();

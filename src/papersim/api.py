@@ -42,8 +42,19 @@ app = FastAPI(title="papersim", version="0.1.0", lifespan=lifespan)
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
+class RevalidatedStaticFiles(StaticFiles):
+    """Fichiers statiques que le navigateur doit revérifier à chaque chargement
+    (« no-cache » : il garde sa copie mais demande si elle a changé ; réponse 304 sinon).
+    Sans cela, il peut réutiliser un ancien script avec une page plus récente."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 # Scripts partagés par les pages web (ex. /static/authors.js).
-app.mount("/static", StaticFiles(directory=str(files("papersim").joinpath("static"))), name="static")
+app.mount("/static", RevalidatedStaticFiles(directory=str(files("papersim").joinpath("static"))), name="static")
 
 
 def get_conn() -> Iterator[psycopg.Connection]:

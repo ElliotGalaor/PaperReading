@@ -65,8 +65,12 @@ Les **formules LaTeX** des titres et résumés (`$T_c$`, `$H$-$φ$`…) sont mis
 KaTeX, chargé depuis un CDN (jsDelivr) : sans connexion Internet, le texte brut reste affiché.
 
 **Comptes** : la Bibliothèque et la recherche sont ouvertes à tous ; les favoris demandent un
-compte, et chaque compte a les siens. « Créer un compte » (en haut à droite) inscrit un nouvel
-utilisateur ; `PAPERSIM_ALLOW_SIGNUP=false` ferme les inscriptions, les comptes se créent alors
+compte, et chaque compte a les siens. L'onglet **Compte**, collé au bord droit de la fenêtre,
+glisse au survol de la souris (ou au clavier avec Tab, ou d'un appui sur écran tactile) et
+montre « Se connecter » / « Créer un compte », ou le nom du compte et « Se déconnecter ». Ces
+boutons ouvrent un panneau coulissant de connexion, sans quitter la page ; une étoile cliquée sans être
+connecté l'ouvre aussi, et le papier est mis en favori dès la connexion. La page `/login` reste
+disponible en accès direct. `PAPERSIM_ALLOW_SIGNUP=false` ferme les inscriptions, les comptes se créent alors
 avec `papersim create-user NOM` (le mot de passe est demandé sans être affiché). Les favoris
 enregistrés avant l'arrivée des comptes reviennent au **premier compte créé**.
 
