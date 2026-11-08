@@ -1,5 +1,4 @@
 import pytest
-from pdfgen import make_pdf
 
 from papersim.extract import (
     extract_document,
@@ -9,6 +8,7 @@ from papersim.extract import (
     guess_title,
     title_matches,
 )
+from pdfgen import make_pdf
 
 ABSTRACT = (
     "We study the pseudogap phase of cuprate superconductors using a combination of "

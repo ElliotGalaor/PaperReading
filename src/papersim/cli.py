@@ -43,7 +43,7 @@ def create_user(
         try:
             user = auth.create_user(conn, username, password)
         except ValueError as e:
-            raise typer.BadParameter(str(e))
+            raise typer.BadParameter(str(e)) from None
     typer.echo(f"Compte « {user['username']} » créé.")
 
 
@@ -128,7 +128,7 @@ def similar(
         try:
             results = search.find_similar(conn, paper_id, k=k, years=years)
         except KeyError:
-            raise typer.BadParameter(f"Papier inconnu : {paper_id}")
+            raise typer.BadParameter(f"Papier inconnu : {paper_id}") from None
     _print_results(results)
 
 

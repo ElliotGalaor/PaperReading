@@ -64,7 +64,7 @@ def embed_missing_local(conn: psycopg.Connection, embedder, batch_size: int = 64
         if not rows:
             return total
         vectors = embedder.embed_papers([(r["title"], r["abstract"]) for r in rows])
-        db.save_embeddings(conn, [(r["id"], v) for r, v in zip(rows, vectors)], TOPIC, embedder.name)
+        db.save_embeddings(conn, [(r["id"], v) for r, v in zip(rows, vectors, strict=True)], TOPIC, embedder.name)
         conn.commit()
         total += len(rows)
         log.info("%d embeddings calculés", total)
@@ -92,7 +92,7 @@ def embed_missing_s2(conn: psycopg.Connection) -> int:
         chunk = rows[start : start + semantic_scholar.BATCH_MAX]
         results = semantic_scholar.fetch_s2([_s2_lookup_id(r) for r in chunk])
         to_store = []
-        for row, paper in zip(chunk, results):
+        for row, paper in zip(chunk, results, strict=True):
             if paper is None or not paper.embedding:
                 continue
             # Garantit la fusion avec la ligne existante.
