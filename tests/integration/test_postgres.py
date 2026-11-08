@@ -31,7 +31,7 @@ def corpus(conn):
               abstract="Disorder suppresses the pseudogap in cuprate superconductors.", refs=["W1", "W2", "W3"]),
         paper(2, year=2021, title="Disorder and the pseudogap phase",
               abstract="We study how disorder affects the pseudogap of cuprates.", refs=["W1", "W2"]),
-        paper(3, year=2023, title="$d$-wave pairing in nickelates",
+        paper(3, year=2023, title=r"$\Gamma$-point pairing in nickelates",
               abstract="Nickelate superconductors show d-wave pairing.", refs=["W9"]),
         paper(4, year=2024, title="Josephson junctions with topological spectra",
               abstract="Multiterminal Josephson junctions and Andreev bound states.", cats=("cond-mat.mes-hall",)),
@@ -83,7 +83,10 @@ def test_library_search_filters_sort_and_pages(conn, corpus):
     assert db.list_papers(conn, query="Author 3")[0] == 1                # nom d'auteur
     assert db.list_papers(conn, category="quant-ph")[0] == 1
     _, by_title = db.list_papers(conn, sort="title")
-    assert by_title[0]["title"].startswith("$d$-wave")                    # rangé à « d », pas à « $ »
+    # « $\Gamma$-point » se range à « Gamma » (entre D et J), pas en tête à cause de « $ » ;
+    # attendu identique quelle que soit la collation de la base.
+    assert [p["title"].split()[0] for p in by_title] == [
+        "Disorder", r"$\Gamma$-point", "Josephson", "Pseudogap", "Quantum"]
     total, empty = db.list_papers(conn, limit=25, offset=500)
     assert total == 5 and empty == []
     cats = {c["code"]: c["count"] for c in db.corpus_categories(conn)}
