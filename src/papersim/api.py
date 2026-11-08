@@ -97,6 +97,12 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "?"
 
 
+@app.get("/health", include_in_schema=False)
+def health() -> dict:
+    """Le serveur répond (sans interroger la base) : sonde de santé de l'image Docker."""
+    return {"status": "ok"}
+
+
 @app.get("/auth/me")
 def whoami(user: dict | None = Depends(optional_user)) -> dict:
     """Compte connecté (ou null) et possibilité de s'inscrire."""

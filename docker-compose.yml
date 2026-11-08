@@ -11,6 +11,34 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U papersim -d papersim"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # Application complète (API + interface), seulement avec le profil « app » :
+  #   docker compose --profile app up -d
+  # Sans profil, « docker compose up -d » ne démarre que la base, comme avant.
+  app:
+    profiles: ["app"]
+    image: ghcr.io/elliotgalaor/paperreading:latest
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Prioritaire sur .env : dans Docker, la base s'appelle « db », pas « localhost ».
+      PAPERSIM_DATABASE_URL: postgresql://papersim:papersim@db:5432/papersim
+    ports:
+      - "127.0.0.1:8000:8000"   # cette machine seulement (HTTP simple)
+    volumes:
+      - models:/home/papersim/.cache
 
 volumes:
   pgdata:
+  models:
