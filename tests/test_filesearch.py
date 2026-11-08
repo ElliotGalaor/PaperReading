@@ -1,12 +1,12 @@
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from pdfgen import make_pdf
 
 from papersim import api, filesearch
 from papersim.extract import Extracted
 from papersim.models import Paper
 from papersim.search import Years
+from pdfgen import make_pdf
 
 PAGE = "arXiv:2101.00001v1\nPseudogap suppression by disorder in cuprates\nAbstract\n" + "text " * 40
 RESULT = [{"paper": {"id": "arxiv:2", "title": "Other"}, "score": 0.03, "signals": {}}]

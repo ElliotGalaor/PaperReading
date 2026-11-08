@@ -3,6 +3,7 @@ import subprocess
 import sys
 import threading
 import time
+from itertools import pairwise
 from pathlib import Path
 
 import httpx
@@ -34,7 +35,7 @@ def _mock_client(handler):
 def _assert_spaced(intervals):
     """Pas de chevauchement, et au moins DELAY entre la fin d'une requête et le début de la suivante."""
     intervals = sorted(intervals)
-    for (s1, e1), (s2, e2) in zip(intervals, intervals[1:]):
+    for (_, e1), (s2, _) in pairwise(intervals):
         assert s2 >= e1 + DELAY - 0.02, (e1, s2)
 
 

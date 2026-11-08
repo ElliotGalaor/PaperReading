@@ -1,0 +1,21 @@
+name: Amélioration
+description: Proposer une fonctionnalité ou une amélioration
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Besoin
+      description: Quel problème cela résout, pour qui ?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposition
+      description: La solution envisagée, et les alternatives écartées.
+  - type: textarea
+    id: done
+    attributes:
+      label: Critères d'acceptation
+      placeholder: "- [ ] …"

@@ -13,7 +13,7 @@ from typing import Literal
 
 import psycopg
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # le serveur démarre quand même, les pages afficheront l'erreur.
     try:
         db.init_db()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.warning("Schéma non vérifié au démarrage (base injoignable ?) : %s", e)
     yield
 
@@ -128,7 +128,7 @@ def signup(creds: Credentials, response: Response, conn: psycopg.Connection = De
     try:
         user = auth.create_user(conn, creds.username, creds.password)
     except ValueError as e:
-        raise HTTPException(409 if "déjà pris" in str(e) else 422, str(e))
+        raise HTTPException(409 if "déjà pris" in str(e) else 422, str(e)) from None
     return _open_session(response, conn, user)
 
 
@@ -226,7 +226,7 @@ def similar(
     try:
         results = search.find_similar(conn, paper_id, k=k, years=years)
     except KeyError:
-        raise HTTPException(404, f"Papier inconnu : {paper_id}")
+        raise HTTPException(404, f"Papier inconnu : {paper_id}") from None
     return {"query": paper_id, "aspect": aspect, "results": results}
 
 
@@ -244,9 +244,9 @@ def paper_ranking(
     try:
         ranking = search.paper_signal(conn, paper_id, signal, k=k, years=years)
     except KeyError:
-        raise HTTPException(404, f"Papier inconnu : {paper_id}")
+        raise HTTPException(404, f"Papier inconnu : {paper_id}") from None
     except ValueError as e:
-        raise HTTPException(422, str(e))
+        raise HTTPException(422, str(e)) from None
     return {
         "signal": signal,
         "query": {"mode": "paper", "paper": db.get_paper(conn, paper_id)},
@@ -290,7 +290,7 @@ def text_ranking(req: SignalRankingRequest, conn: psycopg.Connection = Depends(g
     try:
         ranking = search.text_signal(conn, embedder, req.query, req.signal, k=req.k, years=years)
     except ValueError as e:
-        raise HTTPException(422, str(e))
+        raise HTTPException(422, str(e)) from None
     return {"signal": req.signal, "query": {"mode": "text"}, "results": search.ranking_details(conn, ranking)}
 
 
@@ -306,7 +306,7 @@ def add_favorite(paper_id: str, user: dict = Depends(current_user),
     try:
         db.add_favorite(conn, user["id"], paper_id)
     except KeyError:
-        raise HTTPException(404, f"Papier inconnu : {paper_id}")
+        raise HTTPException(404, f"Papier inconnu : {paper_id}") from None
     return {"paper_id": paper_id, "favorite": True}
 
 
@@ -342,7 +342,7 @@ def compare(req: CompareRequest, conn: psycopg.Connection = Depends(get_conn)) -
     try:
         return search.compare(conn, req.a, req.b)
     except KeyError as e:
-        raise HTTPException(404, f"Papier(s) inconnu(s) : {e.args[0]}")
+        raise HTTPException(404, f"Papier(s) inconnu(s) : {e.args[0]}") from None
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
@@ -373,5 +373,5 @@ def search_file(
     try:
         doc = extract.extract_document(file.filename or "", data)
     except ValueError as e:
-        raise HTTPException(422, str(e))
+        raise HTTPException(422, str(e)) from None
     return filesearch.search_document(conn, doc, k=k, years=years)

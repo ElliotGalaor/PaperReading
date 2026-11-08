@@ -15,20 +15,23 @@ MAX_THEMES = 3
 
 # Mots qui ne doivent apparaître ni au début, ni au milieu, ni à la fin d'un mot-clé.
 _STOPWORDS = set(
-    """a an and are as at be been being between both but by can could do does done due each
+    """
+    a an and are as at be been being between both but by can could do does done due each
     either et etc for from further has have having here how however i if in into is it its
     may might more most much must near no nor not of on onto or other our out over per such
     than that the their them then there these they this those through thus to too under up
-    upon us using via was we were what when where whether which while who whose why will with
-    within without would yet also al based new show shows shown study studies studied paper
-    work result results present presents presented find found propose proposed approach method
-    methods effect effects first one two three high low large small different various several
-    provide provides provided allow allows allowed enable enables lead leads reveal reveals
-    demonstrate demonstrates exhibit exhibits observe observed suggest suggests indicate
-    indicates remain remains become becomes make makes give gives obtain obtained report
-    reported investigate investigated consider considered yield yields driven tool tools
-    powerful generating probing direct received receive great attention excellent recent
-    recently widely important interest increasing growing significant significantly""".split()
+    upon us using via was we were what when where whether which while who whose why will
+    with within without would yet also al based new show shows shown study studies studied
+    paper work result results present presents presented find found propose proposed
+    approach method methods effect effects first one two three high low large small
+    different various several provide provides provided allow allows allowed enable enables
+    lead leads reveal reveals demonstrate demonstrates exhibit exhibits observe observed
+    suggest suggests indicate indicates remain remains become becomes make makes give gives
+    obtain obtained report reported investigate investigated consider considered yield
+    yields driven tool tools powerful generating probing direct received receive great
+    attention excellent recent recently widely important interest increasing growing
+    significant significantly
+    """.split()
 )
 _TOKEN = re.compile(r"^[A-Za-z][A-Za-z0-9\-]*[A-Za-z0-9]$|^[A-Za-z]$")
 _LATEX = re.compile(r"\$[^$]*\$")
@@ -54,9 +57,7 @@ def _acceptable(phrase: str) -> bool:
     if len(tokens) == 1 and len(tokens[0]) < 4 and not _is_acronym(tokens[0]):
         return False
     # Une expression ne se termine pas par un participe passé (« point contact coupled »).
-    if len(tokens) > 1 and tokens[-1].lower().endswith("ed"):
-        return False
-    return True
+    return not (len(tokens) > 1 and tokens[-1].lower().endswith("ed"))
 
 
 def _is_acronym(word: str) -> bool:
